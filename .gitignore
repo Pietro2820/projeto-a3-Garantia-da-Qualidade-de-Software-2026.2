@@ -4,9 +4,11 @@ __pycache__/
 *.egg-info/
 .venv/
 venv/
+uploads
 
 # Variáveis de ambiente
 .env
+uploads
 
 # VS Code
 .vscode/
