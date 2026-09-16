@@ -1,4 +1,5 @@
 from app.queue.celery_app import celery_app
+from app.queue.status_store import set_status
 
 
 @celery_app.task(name="app.queue.tasks.hello_world")
@@ -23,10 +24,14 @@ def transcodificar_video(self, video_id: str, caminho_original: str):
         # Aqui entra a chamada real pro serviço de transcodificação do João
         # resultado = transcoding_service.processar(video_id, caminho_original)
         resultado = {"status": "completed", "caminho_hls": f"/videos/{video_id}/master.m3u8"}
+        set_status(video_id, "completed", {"caminho_hls": resultado["caminho_hls"]})
         return resultado
     except Exception as exc:
         # backoff exponencial: 1min, 5min, 15min
         backoff = [60, 300, 900]
+        if self.request.retries >= self.max_retries:
+            set_status(video_id, "failed", {"erro": str(exc)})
+            raise
         atraso = backoff[min(self.request.retries, len(backoff) - 1)]
         raise self.retry(exc=exc, countdown=atraso)
 
@@ -34,6 +39,7 @@ def transcodificar_video(self, video_id: str, caminho_original: str):
 @celery_app.task(name="app.queue.tasks.processar_upload")
 def processar_upload(video_id: str, caminho_arquivo: str):
     """Dispara a etapa de transcodificação após validar o upload."""
+    set_status(video_id, "processing")
     transcodificar_video.delay(video_id, caminho_arquivo)
     return {"video_id": video_id, "status": "processing"}
 

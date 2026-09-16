@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 
 from app.upload.router import router as upload_router
+from app.status.router import router as status_router
 
 app = FastAPI(
     title="Plataforma de Vídeo Educacional",
@@ -8,6 +9,7 @@ app = FastAPI(
 )
 
 app.include_router(upload_router)
+app.include_router(status_router)
 
 
 @app.get("/")
