@@ -29,14 +29,12 @@ def parse_tags(tags: str) -> list[str]:
     return [tag.strip() for tag in tags.split(",") if tag.strip()]
 
 
-def save_metadata(metadata: dict):
-    """
-    Por enquanto apenas simula o salvamento no Supabase.
+from app.database.client import get_client
 
-    Depois vamos trocar isso por:
-    supabase.table("videos").insert(metadata).execute()
-    """
-    return metadata
+def save_metadata(metadata: dict):
+    supabase = get_client()
+    response = supabase.table("videos").insert(metadata).execute()
+    return response.data
 
 
 @router.post("/upload")
