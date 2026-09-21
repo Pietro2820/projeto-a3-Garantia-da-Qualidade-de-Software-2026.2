@@ -1,5 +1,6 @@
 from app.queue.celery_app import celery_app
 from app.queue.status_store import set_status
+from app.transcoding import processar  # módulo do João
 
 
 @celery_app.task(name="app.queue.tasks.hello_world")
@@ -19,21 +20,41 @@ def transcodificar_video(self, video_id: str, caminho_original: str):
     Contrato combinado com o João:
     entrada -> video_id, caminho do arquivo original
     saida   -> status (completed/failed) + caminho dos arquivos HLS gerados
+
+    Importante: processar() do João NUNCA levanta exceção — ela sempre volta
+    com {"status": "completed", ...} ou {"status": "failed", "error": ...}.
+    Por isso o retry no caso "failed" precisa ser disparado explicitamente
+    aqui embaixo, e não só confiar no except.
     """
+    backoff = [60, 300, 900]  # 1min, 5min, 15min
+
     try:
-        # Aqui entra a chamada real pro serviço de transcodificação do João
-        # resultado = transcoding_service.processar(video_id, caminho_original)
-        resultado = {"status": "completed", "caminho_hls": f"/videos/{video_id}/master.m3u8"}
-        set_status(video_id, "completed", {"caminho_hls": resultado["caminho_hls"]})
-        return resultado
+        resultado = processar(video_id, caminho_original)
     except Exception as exc:
-        # backoff exponencial: 1min, 5min, 15min
-        backoff = [60, 300, 900]
+        # Rede de segurança: erro inesperado FORA do contrato do João
+        # (ex: import quebrado, bug no adapter). Na prática não deveria
+        # acontecer, já que processar() trata tudo internamente.
         if self.request.retries >= self.max_retries:
             set_status(video_id, "failed", {"erro": str(exc)})
             raise
         atraso = backoff[min(self.request.retries, len(backoff) - 1)]
         raise self.retry(exc=exc, countdown=atraso)
+
+    if resultado["status"] == "failed":
+        set_status(video_id, "failed", {"erro": resultado["error"]})
+        if self.request.retries >= self.max_retries:
+            # Esgotou as tentativas: não faz mais sentido levantar retry,
+            # deixa o status "failed" registrado e encerra a task normalmente.
+            return resultado
+        atraso = backoff[min(self.request.retries, len(backoff) - 1)]
+        raise self.retry(
+            exc=RuntimeError(resultado["error"]),
+            countdown=atraso,
+        )
+
+    # status == "completed"
+    set_status(video_id, "completed", {"caminho_hls": resultado["caminho_hls"]})
+    return resultado
 
 
 @celery_app.task(name="app.queue.tasks.processar_upload")
