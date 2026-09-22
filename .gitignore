@@ -14,3 +14,14 @@ venv/
 # Sistema
 .DS_Store
 Thumbs.db
+# Mídia gerada em dev/teste (transcodificação) — arquivos grandes não vão pro git
+uploads/
+videos/
+*.m3u8
+*.ts
+*.mp4
+*.mov
+*.avi
+*.webm
+*.jpg
+*.jpeg
