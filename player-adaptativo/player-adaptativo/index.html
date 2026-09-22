@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Player de vídeo educacional com streaming HLS adaptativo">
+  <title>EduStream — Player</title>
+  <link rel="stylesheet" href="./css/player.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="#" aria-label="EduStream">Edu<span>Stream</span></a>
+
+    <form class="search" id="searchForm" role="search">
+      <input id="searchInput" type="search" placeholder="Pesquisar vídeos..." autocomplete="off">
+      <button type="submit" aria-label="Pesquisar">⌕</button>
+    </form>
+
+    <button class="icon-button" id="profileButton" type="button" aria-label="Perfil">👤</button>
+  </header>
+
+  <main class="page">
+    <section class="watch-layout">
+      <div class="main-column">
+        <section class="player-shell" id="playerShell">
+          <video id="video" playsinline preload="metadata"></video>
+
+          <div class="player-loading" id="playerLoading">
+            <div class="spinner"></div>
+            <span>Carregando vídeo...</span>
+          </div>
+
+          <div class="player-error hidden" id="playerError">
+            <strong>Não foi possível reproduzir este vídeo.</strong>
+            <span id="playerErrorMessage">Verifique sua conexão e tente novamente.</span>
+            <button id="retryButton" type="button">Tentar novamente</button>
+          </div>
+
+          <div class="connection-alert hidden" id="connectionAlert">
+            <div>
+              <strong>Conexão instável</strong>
+              <span id="connectionMessage">A qualidade pode ser reduzida para evitar travamentos.</span>
+            </div>
+            <div class="alert-actions">
+              <button id="dismissQualityButton" type="button">Agora não</button>
+              <button id="reduceQualityButton" type="button">Reduzir qualidade</button>
+            </div>
+          </div>
+
+          <div class="controls" id="controls">
+            <div class="progress-row">
+              <input id="progress" class="progress" type="range" min="0" max="100" value="0" step="0.1" aria-label="Progresso do vídeo">
+            </div>
+
+            <div class="control-row">
+              <div class="control-group">
+                <button class="control-button" id="playButton" type="button" aria-label="Reproduzir">▶</button>
+                <button class="control-button" id="backButton" type="button" aria-label="Voltar 10 segundos">↶</button>
+
+                <div class="volume-control">
+                  <button class="control-button" id="muteButton" type="button" aria-label="Silenciar">🔊</button>
+                  <input id="volume" type="range" min="0" max="1" step="0.01" value="1" aria-label="Volume">
+                </div>
+
+                <span class="time" id="timeLabel">0:00 / 0:00</span>
+              </div>
+
+              <div class="control-group">
+                <button class="control-button" id="settingsButton" type="button" aria-label="Configurações">⚙</button>
+                <button class="control-button" id="pipButton" type="button" aria-label="Picture-in-Picture">▣</button>
+                <button class="control-button" id="fullscreenButton" type="button" aria-label="Tela cheia">⛶</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="settings-menu hidden" id="settingsMenu">
+            <div class="settings-header">
+              <strong>Configurações</strong>
+              <button id="closeSettingsButton" type="button" aria-label="Fechar">×</button>
+            </div>
+
+            <label class="setting-row">
+              <span>Qualidade</span>
+              <select id="qualitySelect">
+                <option value="-1">Automático</option>
+              </select>
+            </label>
+
+            <label class="setting-row">
+              <span>Velocidade</span>
+              <select id="speedSelect">
+                <option value="0.5">0,5x</option>
+                <option value="0.75">0,75x</option>
+                <option value="1" selected>Normal</option>
+                <option value="1.25">1,25x</option>
+                <option value="1.5">1,5x</option>
+                <option value="2">2x</option>
+              </select>
+            </label>
+          </div>
+        </section>
+
+        <article class="video-info">
+          <h1 id="videoTitle">Aula demonstrativa — Streaming Adaptativo</h1>
+          <div class="video-meta">
+            <span id="views">1.245 visualizações</span>
+            <span>•</span>
+            <span id="date">21 de setembro de 2026</span>
+            <span>•</span>
+            <span id="currentQuality">Qualidade: Auto</span>
+          </div>
+
+          <div class="description" id="description">
+            Este vídeo demonstra o player HLS adaptativo da plataforma educacional.
+            A qualidade pode ser alterada automaticamente conforme as condições de rede.
+          </div>
+        </article>
+
+        <section class="related-section">
+          <div class="section-title-row">
+            <h2>Vídeos relacionados</h2>
+          </div>
+          <div class="video-grid" id="relatedVideos"></div>
+        </section>
+      </div>
+
+      <aside class="sidebar">
+        <div class="section-title-row">
+          <h2>Próximos vídeos</h2>
+        </div>
+        <div id="sidebarVideos"></div>
+      </aside>
+    </section>
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/hls.js@1.6.13/dist/hls.min.js"></script>
+  <script type="module" src="./js/player.js"></script>
+</body>
+</html>
