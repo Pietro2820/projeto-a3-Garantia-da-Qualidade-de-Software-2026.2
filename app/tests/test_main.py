@@ -42,10 +42,10 @@ def test_health_check_informa_status_ok():
     assert resposta.json()["status"] == "ok"
 
 
-def test_health_check_informa_o_modulo():
+def test_health_check_lista_as_rotas_disponiveis():
     resposta = client.get("/")
 
-    assert "modulo" in resposta.json()
+    assert "/upload" in resposta.json()["rotas"]
 
 
 # ---------------------------------------------------------------------------
@@ -62,7 +62,15 @@ def test_rota_de_status_esta_registrada():
 
 @pytest.mark.parametrize(
     "rota",
-    ["/", "/upload", "/status/{video_id}"],
+    [
+        "/",
+        "/upload",
+        "/status/{video_id}",
+        "/videos/{video_id}/relacionados",
+        "/recomendacoes/{user_id}",
+        "/trending",
+        "/watch",
+    ],
 )
 def test_todas_as_rotas_do_contrato_estao_na_aplicacao(rota):
     assert rota in rotas_registradas()
@@ -82,8 +90,15 @@ def test_openapi_e_gerado_com_sucesso():
 def test_openapi_lista_os_endpoints_do_contrato():
     caminhos = client.get("/openapi.json").json()["paths"]
 
-    assert "/upload" in caminhos
-    assert "/status/{video_id}" in caminhos
+    for rota in (
+        "/upload",
+        "/status/{video_id}",
+        "/videos/{video_id}/relacionados",
+        "/recomendacoes/{user_id}",
+        "/trending",
+        "/watch",
+    ):
+        assert rota in caminhos, f"rota {rota} ausente do OpenAPI"
 
 
 def test_titulo_da_api_descreve_a_plataforma():
