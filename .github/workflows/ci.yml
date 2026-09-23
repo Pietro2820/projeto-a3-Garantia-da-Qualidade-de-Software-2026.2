@@ -7,7 +7,11 @@ on:
     branches: ["**"]
 
 jobs:
+  # ---------------------------------------------------------------------------
+  # Backend (Python): upload, fila, transcodificação, status, recomendações
+  # ---------------------------------------------------------------------------
   test:
+    name: Testes backend (Python)
     runs-on: ubuntu-latest
 
     services:
@@ -31,15 +35,70 @@ jobs:
           python-version: "3.11"
           cache: "pip"
 
+      # Sem o FFmpeg no PATH o módulo inteiro de transcodificação é SKIPPADO
+      # (pytestmark skipif em test_ffmpeg_service.py): a suíte cai de
+      # 160 executados para 136 passed + 24 skipped — o CI continua verde,
+      # mas ninguém percebe que parou de testar FFmpeg/HLS.
+      # O ubuntu-latest já traz ffmpeg; garantimos explicitamente mesmo assim.
+      - name: Garantir FFmpeg instalado
+        run: |
+          if ! command -v ffmpeg >/dev/null 2>&1; then
+            sudo apt-get update && sudo apt-get install -y ffmpeg
+          fi
+          ffmpeg -version | head -1
+
       - name: Instalar dependências
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
+          pip install pytest-cov
 
-      - name: Rodar testes (pytest)
+      - name: Rodar testes (pytest) com cobertura
         env:
           CELERY_BROKER_URL: redis://localhost:6379/0
           CELERY_RESULT_BACKEND: redis://localhost:6379/1
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
-        run: pytest -v
+        run: pytest -v --cov=app --cov-report=term-missing --cov-report=xml
+
+      - name: Publicar relatório de cobertura (backend)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-backend
+          path: coverage.xml
+
+  # ---------------------------------------------------------------------------
+  # Frontend (player HLS adaptativo): controles, qualidade, recomendações, API
+  # ---------------------------------------------------------------------------
+  player:
+    name: Testes do player (Jest)
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: player-adaptativo/player-adaptativo
+
+    steps:
+      - name: Checkout do código
+        uses: actions/checkout@v4
+
+      - name: Configurar Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: player-adaptativo/player-adaptativo/package-lock.json
+
+      - name: Instalar dependências
+        run: npm ci
+
+      - name: Rodar testes (Jest) com cobertura
+        run: npm test -- --coverage
+
+      - name: Publicar relatório de cobertura (player)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-player
+          path: player-adaptativo/player-adaptativo/coverage/
