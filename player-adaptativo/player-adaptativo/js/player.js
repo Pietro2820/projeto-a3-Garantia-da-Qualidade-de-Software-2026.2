@@ -5,6 +5,7 @@ import {
   renderSidebar,
   DEMO_VIDEOS
 } from "./recommendations.js";
+import { atualizarCatalogoDaApi, registrarVisualizacao } from "./catalog.js";
 
 const CONFIG = {
   // Durante o desenvolvimento, troque por um master.m3u8 real.
@@ -59,6 +60,17 @@ function initialize() {
   renderRecommendations(elements.relatedVideos);
   renderSidebar(elements.sidebarVideos);
 
+  // Enhancement progressivo: os cards de demonstração já estão na tela; aqui
+  // tentamos trocá-los pelos dados reais da API. Se o backend estiver fora,
+  // `atualizarCatalogoDaApi` devolve listas vazias e nada é redesenhado.
+  atualizarCatalogoDaApi({
+    relatedContainer: elements.relatedVideos,
+    sidebarContainer: elements.sidebarVideos,
+    videoId: CONFIG.VIDEO_ID
+  }).catch((error) => console.info("Catálogo da API indisponível:", error));
+
+  registrarVisualizacao(CONFIG.VIDEO_ID, CONFIG.USER_ID);
+
   elements.qualitySelect.addEventListener("change", (event) => {
     try {
       qualityManager?.setQuality(event.target.value);
@@ -81,6 +93,8 @@ function initialize() {
 
   window.addEventListener("video-selected", (event) => {
     const selected = event.detail;
+
+    registrarVisualizacao(selected?.id, CONFIG.USER_ID);
 
     if (selected?.hlsUrl) {
       loadVideo(selected.hlsUrl, selected);
