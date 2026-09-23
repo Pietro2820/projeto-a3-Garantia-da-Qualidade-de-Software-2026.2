@@ -25,6 +25,11 @@ const indexHtml = readFileSync(
 let player;
 
 beforeAll(async () => {
+  // O bootstrap tenta buscar dados na API; sem servidor no ar o catálogo cai
+  // no fallback (DEMO_VIDEOS) e loga console.info. É o comportamento esperado,
+  // só não precisa poluir a saída do teste.
+  jest.spyOn(console, "info").mockImplementation(() => {});
+
   const pagina = new DOMParser().parseFromString(indexHtml, "text/html");
   document.body.innerHTML = pagina.body.innerHTML;
 
