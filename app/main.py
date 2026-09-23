@@ -2,6 +2,7 @@ from fastapi import FastAPI
 
 from app.upload.router import router as upload_router
 from app.status.router import router as status_router
+from app.recommendations.router import router as recommendations_router
 
 app = FastAPI(
     title="Plataforma de Vídeo Educacional",
@@ -10,11 +11,13 @@ app = FastAPI(
 
 app.include_router(upload_router)
 app.include_router(status_router)
+app.include_router(recommendations_router)
 
 
 @app.get("/")
 def health():
     return {
         "status": "ok",
-        "modulo": "upload"
+        "rotas": ["/upload", "/status/{video_id}", "/videos/{video_id}/relacionados",
+                  "/recomendacoes/{user_id}", "/trending", "/watch"],
     }
