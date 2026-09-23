@@ -133,7 +133,13 @@
     </section>
   </main>
 
-  <script src="https://cdn.jsdelivr.net/npm/hls.js@1.6.13/dist/hls.min.js"></script>
+  <!--
+    HLS.js vendalizado (versão fixada em 1.6.13, Apache-2.0).
+    Antes a lib vinha de um CDN público: sem internet — ou com a rede da
+    instituição bloqueando CDN de terceiros — o player não carregava na
+    apresentação. Proveniência e checksum em ./vendor/README.md.
+  -->
+  <script src="./vendor/hls.min.js"></script>
   <script type="module" src="./js/player.js"></script>
 </body>
 </html>
