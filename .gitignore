@@ -11,6 +11,17 @@ venv/
 # VS Code
 .vscode/
 
+# Testes / cobertura (pytest, coverage.py)
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+
+# Frontend (player) — dependências e relatórios do Jest
+node_modules/
+coverage/
+
 # Sistema
 .DS_Store
 Thumbs.db
