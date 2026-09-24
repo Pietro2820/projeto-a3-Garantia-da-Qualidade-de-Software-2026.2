@@ -1,6 +1,30 @@
+import logging
+
+from app.database.videos import atualizar_status
 from app.queue.celery_app import celery_app
 from app.queue.status_store import set_status
 from app.transcoding import processar  # módulo do João
+
+logger = logging.getLogger(__name__)
+
+
+def _sincronizar_banco(video_id: str, status: str) -> None:
+    """Reflete o status no banco (Supabase ou fallback local).
+
+    O Redis alimenta o /status em tempo real, mas o CATÁLOGO (e portanto as
+    recomendações, o /trending e os cards do player) lê do banco filtrando
+    status='completed'. Sem esta sincronização o vídeo transcodificava, o
+    /status dizia "completed", mas ele nunca aparecia no frontend.
+
+    Falha aqui não pode derrubar a task: loga e segue (o Redis já tem o status).
+    """
+    try:
+        atualizar_status(video_id, status)
+    except Exception as exc:
+        logger.warning(
+            "Não foi possível atualizar o status de %s para '%s' no banco: %s",
+            video_id, status, exc,
+        )
 
 
 @celery_app.task(name="app.queue.tasks.hello_world")
@@ -36,12 +60,14 @@ def transcodificar_video(self, video_id: str, caminho_original: str):
         # acontecer, já que processar() trata tudo internamente.
         if self.request.retries >= self.max_retries:
             set_status(video_id, "failed", {"erro": str(exc)})
+            _sincronizar_banco(video_id, "failed")
             raise
         atraso = backoff[min(self.request.retries, len(backoff) - 1)]
         raise self.retry(exc=exc, countdown=atraso)
 
     if resultado["status"] == "failed":
         set_status(video_id, "failed", {"erro": resultado["error"]})
+        _sincronizar_banco(video_id, "failed")
         if self.request.retries >= self.max_retries:
             # Esgotou as tentativas: não faz mais sentido levantar retry,
             # deixa o status "failed" registrado e encerra a task normalmente.
@@ -54,6 +80,7 @@ def transcodificar_video(self, video_id: str, caminho_original: str):
 
     # status == "completed"
     set_status(video_id, "completed", {"caminho_hls": resultado["caminho_hls"]})
+    _sincronizar_banco(video_id, "completed")
     return resultado
 
 
@@ -61,6 +88,7 @@ def transcodificar_video(self, video_id: str, caminho_original: str):
 def processar_upload(video_id: str, caminho_arquivo: str):
     """Dispara a etapa de transcodificação após validar o upload."""
     set_status(video_id, "processing")
+    _sincronizar_banco(video_id, "processing")
     transcodificar_video.delay(video_id, caminho_arquivo)
     return {"video_id": video_id, "status": "processing"}
 

@@ -1,3 +1,4 @@
+import logging
 import os
 import shutil
 import uuid
@@ -5,6 +6,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -29,12 +32,47 @@ def parse_tags(tags: str) -> list[str]:
     return [tag.strip() for tag in tags.split(",") if tag.strip()]
 
 
-from app.database.client import get_client
+from app.database.videos import inserir_video
 
 def save_metadata(metadata: dict):
-    supabase = get_client()
-    response = supabase.table("videos").insert(metadata).execute()
-    return response.data
+    """Persiste os metadados do vídeo (Supabase, ou banco local em dev).
+
+    Antes esta função falava direto com o client do Supabase e estourava
+    RuntimeError sem credenciais — o upload inteiro virava 500. Agora usa
+    `inserir_video`, que tem fallback local automático.
+    """
+    return inserir_video(metadata)
+
+
+def _enfileirar_processamento(video_id: str, file_path: str) -> str:
+    """Marca status 'pending' no Redis e dispara a task do Celery.
+
+    Devolve uma string para a resposta da API:
+      * "enfileirado"  — a task foi publicada no broker;
+      * "indisponivel" — Redis/broker fora do ar. O upload CONTINUA válido
+        (arquivo e metadados foram salvos); só o processamento automático
+        não dispara. Nada de derrubar a rota por causa da fila.
+
+    A task `processar_upload` (app/queue/tasks.py) marca "processing", chama
+    a transcodificação do João e grava "completed"/"failed" no status e no
+    banco — é o que faz /status/{video_id} e o catálogo do player funcionarem.
+    """
+    resultado = "indisponivel"
+    try:
+        from app.queue.status_store import set_status
+        set_status(video_id, "pending")
+    except Exception:
+        logger.warning("Redis fora do ar — status 'pending' não registrado para %s", video_id)
+
+    try:
+        from app.queue.tasks import processar_upload
+        processar_upload.delay(video_id, file_path)
+        resultado = "enfileirado"
+    except Exception as exc:
+        logger.warning(
+            "Não foi possível enfileirar %s (broker fora do ar?): %s", video_id, exc
+        )
+    return resultado
 
 
 @router.post("/upload")
@@ -101,9 +139,13 @@ async def upload_video(
 
     save_metadata(metadata)
 
+    fila = _enfileirar_processamento(video_id, str(file_path))
+
     return {
         "video_id": video_id,
         "status": "pending",
         "message": "Upload recebido com sucesso",
         "file_path": str(file_path),
+        "fila": fila,
+        "status_url": f"/status/{video_id}",
     }
