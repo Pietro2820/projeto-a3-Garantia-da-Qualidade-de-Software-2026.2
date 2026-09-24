@@ -6,6 +6,7 @@ import {
   DEMO_VIDEOS
 } from "./recommendations.js";
 import { atualizarCatalogoDaApi, registrarVisualizacao } from "./catalog.js";
+import { API_BASE_URL } from "./api.js";
 
 const CONFIG = {
   // Durante o desenvolvimento, troque por um master.m3u8 real.
@@ -17,6 +18,22 @@ const CONFIG = {
   VIDEO_ID: window.PLAYER_CONFIG?.VIDEO_ID || "demo-video",
   USER_ID: window.PLAYER_CONFIG?.USER_ID || "demo-user"
 };
+
+/**
+ * Resolve uma URL de mídia vinda da API para uma URL utilizável no navegador.
+ *
+ * A API devolve URLs absolutas (http://host:8000/videos/...), mas se vier um
+ * caminho relativo de raiz ("/videos/..."), ele precisa ser prefixado com a
+ * origem do BACKEND — senão o navegador resolve contra a origem do front
+ * (Live Server :5500, por exemplo) e o vídeo dá 404.
+ * URLs relativas à página ("./videos/...") e absolutas passam intactas.
+ */
+function resolveMediaUrl(url) {
+  if (!url || typeof url !== "string") return url;
+  if (/^https?:\/\//i.test(url)) return url;
+  if (url.startsWith("/")) return `${API_BASE_URL}${url}`;
+  return url;
+}
 
 const video = document.querySelector("#video");
 
@@ -63,11 +80,7 @@ function initialize() {
   // Enhancement progressivo: os cards de demonstração já estão na tela; aqui
   // tentamos trocá-los pelos dados reais da API. Se o backend estiver fora,
   // `atualizarCatalogoDaApi` devolve listas vazias e nada é redesenhado.
-  atualizarCatalogoDaApi({
-    relatedContainer: elements.relatedVideos,
-    sidebarContainer: elements.sidebarVideos,
-    videoId: CONFIG.VIDEO_ID
-  }).catch((error) => console.info("Catálogo da API indisponível:", error));
+  carregarCatalogo(CONFIG.VIDEO_ID);
 
   registrarVisualizacao(CONFIG.VIDEO_ID, CONFIG.USER_ID);
 
@@ -97,13 +110,61 @@ function initialize() {
     registrarVisualizacao(selected?.id, CONFIG.USER_ID);
 
     if (selected?.hlsUrl) {
-      loadVideo(selected.hlsUrl, selected);
+      CONFIG.VIDEO_ID = selected.id;
+      loadVideo(resolveMediaUrl(selected.hlsUrl), selected);
+
+      // Os "relacionados" passam a ser os do vídeo recém-escolhido — é a
+      // conversa com o backend: GET /videos/{novo_id}/relacionados.
+      carregarCatalogo(selected.id, { autoSelecionar: false });
     } else {
       console.info("Vídeo selecionado no mock:", selected);
     }
   });
 
   loadVideo();
+}
+
+/**
+ * Busca relacionados + em alta na API e redesenha os cards.
+ *
+ * Com `autoSelecionar` (padrão na primeira carga), o primeiro vídeo real
+ * disponível vira o vídeo em reprodução — é o que faz a página mostrar
+ * conteúdo DE VERDADE do backend em vez do master.m3u8 de demonstração
+ * (que não existe no repositório). Falha em qualquer etapa mantém os demos.
+ */
+function carregarCatalogo(videoId, { autoSelecionar = true } = {}) {
+  return atualizarCatalogoDaApi({
+    relatedContainer: elements.relatedVideos,
+    sidebarContainer: elements.sidebarVideos,
+    videoId
+  })
+    .then(({ relacionados, emAlta }) => {
+      if (autoSelecionar) {
+        selecionarVideoInicialDaApi([...emAlta, ...relacionados]);
+      }
+      return { relacionados, emAlta };
+    })
+    .catch((error) => console.info("Catálogo da API indisponível:", error));
+}
+
+/**
+ * Toca o primeiro vídeo real do catálogo da API, se houver.
+ *
+ * Não faz nada quando:
+ *   • o integrador configurou HLS_URL explicitamente (config.js) — a
+ *     configuração manual sempre vence;
+ *   • a API não devolveu nenhum vídeo com stream pronto (backend fora, sem
+ *     banco, nada transcodificado ainda) — o player segue com a demonstração.
+ */
+function selecionarVideoInicialDaApi(videos) {
+  if (window.PLAYER_CONFIG?.HLS_URL) return;
+
+  const primeiro = (videos || []).find((video) => video?.hlsUrl);
+  if (!primeiro) return;
+
+  CONFIG.VIDEO_ID = primeiro.id;
+  registrarVisualizacao(primeiro.id, CONFIG.USER_ID);
+  loadVideo(resolveMediaUrl(primeiro.hlsUrl), primeiro);
 }
 
 function loadVideo(url = CONFIG.HLS_URL, metadata = null) {

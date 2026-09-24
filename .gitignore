@@ -36,3 +36,10 @@ videos/
 *.webm
 *.jpg
 *.jpeg
+
+# Banco local de desenvolvimento (fallback sem Supabase — app/database/local_store.py)
+data/
+
+# Artefatos locais de execução (sandbox/dev)
+.venv-test/
+dump.rdb
