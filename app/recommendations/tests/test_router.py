@@ -182,11 +182,13 @@ def test_relacionados_devolve_tags_como_lista(api):
 
 
 def test_relacionados_traz_as_urls_de_midia_do_contrato_1(api):
+    """URLs absolutas: o player pode estar em outra origem (Live Server) —
+    com URL relativa o navegador resolveria contra o front e daria 404."""
     resposta = client.get("/videos/v-fra/relacionados")
 
     item = resposta.json()["relacionados"][0]
-    assert item["hls_url"] == f"/videos/{item['video_id']}/master.m3u8"
-    assert item["thumbnail_url"] == f"/videos/{item['video_id']}/thumbnail.jpg"
+    assert item["hls_url"] == f"http://testserver/videos/{item['video_id']}/master.m3u8"
+    assert item["thumbnail_url"] == f"http://testserver/videos/{item['video_id']}/thumbnail.jpg"
 
 
 def test_relacionados_inclui_a_contagem_de_views(api, views):

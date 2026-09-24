@@ -22,7 +22,7 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
 from app.database.videos import buscar_video, listar_videos
@@ -72,15 +72,37 @@ def _executar_no_banco(operacao, *args, **kwargs):
         ) from exc
 
 
-def _enriquecer(video: dict, score: float | None = None) -> dict:
+def _url_absoluta(request: Request | None, caminho: str) -> str:
+    """Transforma '/videos/x/master.m3u8' em URL absoluta usando a origem da
+    requisição (ex: 'http://localhost:8000/videos/x/master.m3u8').
+
+    Por quê: o player roda em origem própria quando aberto via Live Server ou
+    outro host. Com URL relativa, o navegador resolve contra a origem do
+    FRONT (que não tem esses arquivos) e o vídeo/thumbnail dá 404. URL
+    absoluta funciona nas duas montagens (mesma origem ou CORS).
+    """
+    if request is None:
+        return caminho
+    base = str(request.base_url).rstrip("/")
+    return f"{base}{caminho}"
+
+
+def _enriquecer(video: dict, score: float | None = None,
+                request: Request | None = None) -> dict:
     """Acrescenta ao metadado do contrato #2 o que o player usa no card."""
     video_id = video.get("video_id")
     resposta = {
         **video,
         "tags": normalizar_tags(video.get("tags")),
         "views": views_store.contar_visualizacoes(video_id) if video_id else 0,
-        "hls_url": f"/videos/{video_id}/master.m3u8" if video_id else None,
-        "thumbnail_url": f"/videos/{video_id}/thumbnail.jpg" if video_id else None,
+        "hls_url": (
+            _url_absoluta(request, f"/videos/{video_id}/master.m3u8")
+            if video_id else None
+        ),
+        "thumbnail_url": (
+            _url_absoluta(request, f"/videos/{video_id}/thumbnail.jpg")
+            if video_id else None
+        ),
     }
     if score is not None:
         resposta["score"] = score
@@ -98,6 +120,7 @@ def _catalogo_pronto() -> list[dict]:
 
 @router.get("/videos/{video_id}/relacionados")
 def videos_relacionados(
+    request: Request,
     video_id: str,
     limite: int = Query(default=5, ge=1, le=50),
 ):
@@ -116,7 +139,8 @@ def videos_relacionados(
     return {
         "video_id": video_id,
         "relacionados": [
-            _enriquecer(video, score=video["score"]) for video in parecidos[:limite]
+            _enriquecer(video, score=video["score"], request=request)
+            for video in parecidos[:limite]
         ],
     }
 
@@ -127,6 +151,7 @@ def videos_relacionados(
 
 @router.get("/recomendacoes/{user_id}")
 def recomendacoes_personalizadas(
+    request: Request,
     user_id: str,
     limite: int = Query(default=5, ge=1, le=50),
 ):
@@ -165,7 +190,8 @@ def recomendacoes_personalizadas(
     return {
         "user_id": user_id,
         "recomendacoes": [
-            _enriquecer(video, score=video["score"]) for video in sugeridos[:limite]
+            _enriquecer(video, score=video["score"], request=request)
+            for video in sugeridos[:limite]
         ],
     }
 
@@ -175,7 +201,7 @@ def recomendacoes_personalizadas(
 # ---------------------------------------------------------------------------
 
 @router.get("/trending")
-def trending(limite: int = Query(default=10, ge=1, le=50)):
+def trending(request: Request, limite: int = Query(default=10, ge=1, le=50)):
     """Mais assistidos, segundo o contador em Redis."""
     ranking = views_store.mais_assistidos(limite)
 
@@ -189,7 +215,7 @@ def trending(limite: int = Query(default=10, ge=1, le=50)):
             # O vídeo pode ter sido apagado do banco; o ranking não pode quebrar.
             logger.warning("video_id %s no ranking mas não está no banco", video_id)
             continue
-        enriquecido = _enriquecer(video)
+        enriquecido = _enriquecer(video, request=request)
         enriquecido["views"] = views
         videos.append(enriquecido)
 
