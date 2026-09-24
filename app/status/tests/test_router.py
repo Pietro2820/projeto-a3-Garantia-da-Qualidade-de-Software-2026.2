@@ -109,3 +109,51 @@ def test_404_nao_vaza_stacktrace_500(monkeypatch):
     resposta = client.get("/status/nao-existe")
 
     assert resposta.status_code != 500
+
+
+# ---------------------------------------------------------------------------
+# Fallback para o banco (Redis fora do ar ou vídeo ainda sem status na fila)
+# ---------------------------------------------------------------------------
+
+def test_redis_fora_do_ar_consulta_o_banco(monkeypatch):
+    """ConnectionError do Redis não pode virar 500 — o banco é a 2ª fonte."""
+    import redis as modulo_redis
+
+    def _get_status_quebrado(video_id: str):
+        raise modulo_redis.ConnectionError("Connection refused")
+
+    monkeypatch.setattr("app.status.router.get_status", _get_status_quebrado)
+    monkeypatch.setattr(
+        "app.status.router.buscar_video",
+        lambda video_id: {"video_id": video_id, "status": "completed"},
+    )
+
+    resposta = client.get("/status/abc-123")
+
+    assert resposta.status_code == 200
+    assert resposta.json()["status"] == "completed"
+    assert resposta.json()["origem"] == "banco"
+
+
+def test_video_pendente_sem_fila_aparece_pelo_banco(monkeypatch):
+    """Upload recém-feito: Redis ainda não tem status, mas o banco tem 'pending'."""
+    monkeypatch.setattr("app.status.router.get_status", responder_com(None))
+    monkeypatch.setattr(
+        "app.status.router.buscar_video",
+        lambda video_id: {"video_id": video_id, "status": "pending"},
+    )
+
+    resposta = client.get("/status/novo-video")
+
+    assert resposta.status_code == 200
+    assert resposta.json()["status"] == "pending"
+
+
+def test_404_quando_nem_redis_nem_banco_conhecem_o_video(monkeypatch):
+    monkeypatch.setattr("app.status.router.get_status", responder_com(None))
+    monkeypatch.setattr("app.status.router.buscar_video", lambda video_id: None)
+
+    resposta = client.get("/status/fantasma")
+
+    assert resposta.status_code == 404
+    assert resposta.json()["detail"] == "video_id não encontrado"
