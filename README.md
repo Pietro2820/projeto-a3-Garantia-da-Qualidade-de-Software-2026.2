@@ -44,7 +44,7 @@ cd projeto-a3-Garantia-da-Qualidade-de-Software-2026.2
 cp .env.example .env
 ```
 
-> **Status atual:** o projeto no Supabase ainda vai ser criado. Por enquanto pode deixar o `.env` vazio mesmo — assim que as credenciais forem compartilhadas com o time, é só preencher `SUPABASE_URL` e `SUPABASE_KEY` nele. **Nunca commite o `.env`**, só o `.env.example` (sem valores) vai pro Git.
+> Preencha `SUPABASE_URL` e `SUPABASE_KEY` com os dados do projeto Supabase do time (passo a passo na seção **Supabase** abaixo). Enquanto o `.env` estiver vazio, o backend funciona com o banco local `data/videos.json` — útil para desenvolver sem rede. **Nunca commite o `.env`**, só o `.env.example` (sem valores) vai pro Git.
 
 ### 3. Subir tudo com um comando
 
@@ -93,17 +93,16 @@ pip install -r requirements.txt
 
 ### 4. Configurar as variáveis de ambiente
 
-> **Status atual:** o projeto no Supabase ainda vai ser criado. Por enquanto o `.env.example` está vazio — assim que o projeto Supabase existir e as credenciais forem compartilhadas com o time, esse passo passa a valer:
-
 ```bash
 cp .env.example .env
 ```
 
-Preencha no `.env`:
+Preencha no `.env` (veja a seção **Supabase** abaixo):
 ```
 SUPABASE_URL=...
 SUPABASE_KEY=...
 ```
+> Sem essas variáveis o backend cai no banco local `data/videos.json` (dev offline).
 
 **Nunca commite o arquivo `.env`** — apenas o `.env.example` (sem valores) vai pro Git.
 
@@ -146,6 +145,26 @@ uvicorn app.main:app --reload
 pytest -v
 ```
 
+## Supabase (banco compartilhado do time)
+
+O projeto Supabase já existe — com ele configurado, **todo o time e o player passam a ver o mesmo catálogo** (o fallback local `data/videos.json` se desliga sozinho). Uma vez por máquina:
+
+1. **Criar a tabela**: painel do Supabase → **SQL Editor** → cole e execute o conteúdo de [`supabase/schema.sql`](supabase/schema.sql) (idempotente, cria a tabela `videos` + índices).
+2. **Copiar as credenciais**: painel → **Settings → API** → `Project URL` e a chave (`anon public` serve para dev) → colar no `.env`:
+   ```
+   SUPABASE_URL=https://xxxx.supabase.co
+   SUPABASE_KEY=eyJ...
+   ```
+   O `.env` é carregado automaticamente no import do pacote `app` (não precisa exportar na mão).
+3. **Conferir a ligação**:
+   ```bash
+   python scripts/verificar_supabase.py
+   ```
+   O script valida credenciais, existência da tabela e faz insert → select → delete de teste. Se a tabela não existir, ele manda rodar o `schema.sql`.
+4. **Reiniciar** API e worker Celery para valerem as novas variáveis.
+
+> Sem credenciais no `.env`, tudo continua funcionando localmente (banco JSON) — inclusive os testes e a demo.
+
 ## Frontend ↔ Backend (o player conversando com a API)
 
 Com a API no ar (`uvicorn app.main:app --reload`), o backend **também serve o player** — não precisa de outro servidor:
@@ -164,7 +183,7 @@ Com API + Redis + worker Celery rodando (passos acima), em outro terminal:
 python scripts/demo_completo.py
 ```
 
-O script gera vídeos de teste com FFmpeg, faz o upload via `POST /upload`, acompanha a transcodificação pelo `GET /status/{video_id}`, registra visualizações e mostra o `/trending` e os `/videos/{id}/relacionados` respondendo com os vídeos reais. No fim, é só abrir **http://localhost:8000/player/** — o player carrega o catálogo da API (seção "Vídeos relacionados" e barra lateral "Próximos vídeos") e **dá play automaticamente no primeiro vídeo transcodificado**.
+O script gera vídeos de teste com FFmpeg, faz o upload via `POST /upload`, acompanha a transcodificação pelo `GET /status/{video_id}`, registra visualizações e mostra o `/trending` e os `/videos/{id}/relacionados` respondendo com os vídeos reais. No fim, é só abrir a **home estilo YouTube** em **http://localhost:8000/player/home.html**: a grade lista os vídeos transcodificados (com busca por título/tag no topo) e cada card abre a página de watch já tocando o vídeo escolhido (`index.html?video={id}`). Abrir direto **http://localhost:8000/player/** também funciona: o player dá play automaticamente no primeiro vídeo do catálogo.
 
 ### Rodando o frontend separado (Live Server, http.server, etc.)
 
@@ -184,9 +203,31 @@ POST /upload ──► grava arquivo + metadados (Supabase ou JSON local)
                      └─► transcodificar_video (FFmpeg → HLS em videos/{id}/)
                              └─► status completed no Redis E no banco
 GET /status/{id} ──► pending → processing → completed   (polling do front)
-GET /trending, GET /videos/{id}/relacionados ──► cards do player (hls_url absoluto)
+GET /catalogo, /trending, /videos/{id}/relacionados ──► home + cards do player
 GET /videos/{id}/master.m3u8 ──► HLS.js toca o vídeo adaptativo
 POST /watch ──► alimenta o ranking e as recomendações do usuário
+```
+
+## Modo rápido: subir tudo com um comando só
+
+Em vez de abrir 4 terminais (Redis, worker, API, testes), use o launcher — com o venv ativado:
+
+**Windows (PowerShell):**
+```powershell
+venv\Scripts\python.exe scripts\subir_tudo.py
+```
+**Linux/Mac:**
+```bash
+python scripts/subir_tudo.py
+```
+
+O script, em ordem: cria o `.env` se faltar; sobe o Redis via `docker compose` se a porta 6379 estiver muda; inicia o worker Celery (`--pool=solo`, o pool que funciona no Windows) e a API; espera o health check; e imprime as URLs da home/player/docs. Os logs ficam em `logs/` e os PIDs em `logs/*.pid`.
+
+Variações úteis:
+```bash
+python scripts/subir_tudo.py --demo    # sobe tudo e roda a demo E2E em seguida
+python scripts/subir_tudo.py --frente  # worker+API neste terminal (Ctrl+C derruba)
+python scripts/parar_tudo.py           # derruba worker+API (Redis fica no ar)
 ```
 
 ## Testando se o Celery está funcionando (task de exemplo)
