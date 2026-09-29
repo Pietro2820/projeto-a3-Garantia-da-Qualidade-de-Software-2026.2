@@ -1,0 +1,2914 @@
+From 81336558dceadb8e24ccbd6017f2ed86c9763c51 Mon Sep 17 00:00:00 2001
+From: Integracao <integracao@local>
+Date: Thu, 24 Sep 2026 20:23:45 +0000
+Subject: [PATCH 1/3] =?UTF-8?q?feat(integracao):=20liga=20o=20player=20?=
+ =?UTF-8?q?=C3=A0=20API=20de=20ponta=20a=20ponta=20(CORS,=20m=C3=ADdia,=20?=
+ =?UTF-8?q?fila=20e=20fallback=20local)?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Backend:
+- main.py: CORS para dev + serve o player em /player/ e a mídia HLS em /videos/
+- recommendations: hls_url/thumbnail_url absolutos pela origem da request
+- database: fallback JSON local (data/videos.json) quando não há Supabase + inserir_video()
+- upload: metadados com fallback, status 'pending' e enfileiramento no Celery
+- queue/tasks: sincroniza o status no banco (catálogo lista status=completed)
+- status: fallback ao banco quando o Redis falha ou ainda não tem o vídeo
+
+Frontend:
+- config.js (novo) carregado no index.html: origem da API automática
+- player.js: resolve URLs relativas contra a API, auto-seleciona o primeiro
+  vídeo real do catálogo e recarrega os relacionados ao trocar de vídeo
+
+Infra/docs/testes:
+- scripts/demo_completo.py: demo E2E (upload → fila → HLS → trending)
+- README: seção 'Frontend ↔ Backend' + problemas comuns atualizados
+- +18 testes pytest (273 no total) e +9 testes Jest (187 no total)
+---
+ .env.example                                  |   8 +
+ .gitignore                                    |   7 +
+ README.md                                     |  82 ++++-
+ app/database/local_store.py                   | 109 +++++++
+ app/database/tests/test_local_store.py        | 140 +++++++++
+ app/database/videos.py                        |  81 ++++-
+ app/main.py                                   |  61 ++++
+ app/queue/tasks.py                            |  28 ++
+ app/recommendations/router.py                 |  42 ++-
+ app/recommendations/tests/test_router.py      |   6 +-
+ app/status/router.py                          |  51 +++-
+ app/status/tests/test_router.py               |  48 +++
+ app/upload/router.py                          |  50 +++-
+ app/upload/tests/test_upload.py               |  60 +++-
+ player-adaptativo/player-adaptativo/config.js |  29 ++
+ .../player-adaptativo/index.html              |   2 +
+ .../player-adaptativo/js/player.js            |  73 ++++-
+ .../tests/player.integracao-api.test.js       | 280 ++++++++++++++++++
+ scripts/demo_completo.py                      | 177 +++++++++++
+ 19 files changed, 1286 insertions(+), 48 deletions(-)
+ create mode 100644 app/database/local_store.py
+ create mode 100644 app/database/tests/test_local_store.py
+ create mode 100644 player-adaptativo/player-adaptativo/config.js
+ create mode 100644 player-adaptativo/player-adaptativo/tests/player.integracao-api.test.js
+ create mode 100644 scripts/demo_completo.py
+
+diff --git a/.env.example b/.env.example
+index 12be0a2..223f91f 100644
+--- a/.env.example
++++ b/.env.example
+@@ -22,3 +22,11 @@ AWS_SECRET_ACCESS_KEY=
+ AWS_REGION=us-east-1
+ #AWS_ENDPOINT_URL=http://localhost:9000
+ #S3_PUBLIC_URL=
++
++# --- Integração back ↔ front (dev sem Supabase) ---
++# Banco local em JSON usado automaticamente quando SUPABASE_URL/KEY estão vazias.
++#LOCAL_DB_PATH=data/videos.json
++# Pasta dos vídeos transcodificados (HLS) servida pela API em /videos.
++#VIDEOS_DIR=videos
++# Pasta do player servida pela API em /player.
++#PLAYER_DIR=player-adaptativo/player-adaptativo
+diff --git a/.gitignore b/.gitignore
+index 312e14d..f0b74d2 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -36,3 +36,10 @@ videos/
+ *.webm
+ *.jpg
+ *.jpeg
++
++# Banco local de desenvolvimento (fallback sem Supabase — app/database/local_store.py)
++data/
++
++# Artefatos locais de execução (sandbox/dev)
++.venv-test/
++dump.rdb
+diff --git a/README.md b/README.md
+index 9f369f0..3b6c53f 100644
+--- a/README.md
++++ b/README.md
+@@ -146,6 +146,49 @@ uvicorn app.main:app --reload
+ pytest -v
+ ```
+ 
++## Frontend ↔ Backend (o player conversando com a API)
++
++Com a API no ar (`uvicorn app.main:app --reload`), o backend **também serve o player** — não precisa de outro servidor:
++
++```
++http://localhost:8000/player/     ← frontend (player adaptativo)
++http://localhost:8000/docs        ← documentação da API (Swagger)
++http://localhost:8000/videos/...  ← HLS (master.m3u8, segmentos) e thumbnails
++```
++
++### Demo completa de ponta a ponta (recomendado)
++
++Com API + Redis + worker Celery rodando (passos acima), em outro terminal:
++
++```bash
++python scripts/demo_completo.py
++```
++
++O script gera vídeos de teste com FFmpeg, faz o upload via `POST /upload`, acompanha a transcodificação pelo `GET /status/{video_id}`, registra visualizações e mostra o `/trending` e os `/videos/{id}/relacionados` respondendo com os vídeos reais. No fim, é só abrir **http://localhost:8000/player/** — o player carrega o catálogo da API (seção "Vídeos relacionados" e barra lateral "Próximos vídeos") e **dá play automaticamente no primeiro vídeo transcodificado**.
++
++### Rodando o frontend separado (Live Server, http.server, etc.)
++
++Também funciona: a API tem **CORS liberado para desenvolvimento**, então o player pode ser aberto de outra origem/porta. Nesse caso o `config.js` do player aponta a API para `http://localhost:8000` automaticamente. Para mudar a origem da API, edite `player-adaptativo/player-adaptativo/config.js`.
++
++### Sem Supabase? Sem problema (dev local)
++
++Enquanto o projeto Supabase não existe, o backend cai automaticamente num **banco JSON local** (`data/videos.json`, pasta ignorada pelo Git) — upload, catálogo, status e recomendações funcionam de ponta a ponta sem nenhuma configuração. Quando `SUPABASE_URL`/`SUPABASE_KEY` forem preenchidos no `.env`, o Supabase volta a ser usado sem mudar nenhuma outra linha.
++
++> O Redis continua sendo necessário para a fila do Celery e para o contador de visualizações (`/trending`, `/watch`). `docker compose up -d redis` resolve.
++
++### O fluxo completo da integração
++
++```
++POST /upload ──► grava arquivo + metadados (Supabase ou JSON local)
++             └─► enfileira processar_upload no Celery (Redis)
++                     └─► transcodificar_video (FFmpeg → HLS em videos/{id}/)
++                             └─► status completed no Redis E no banco
++GET /status/{id} ──► pending → processing → completed   (polling do front)
++GET /trending, GET /videos/{id}/relacionados ──► cards do player (hls_url absoluto)
++GET /videos/{id}/master.m3u8 ──► HLS.js toca o vídeo adaptativo
++POST /watch ──► alimenta o ranking e as recomendações do usuário
++```
++
+ ## Testando se o Celery está funcionando (task de exemplo)
+ 
+ Com o worker rodando (seja pela Opção A ou B), abra **outro terminal**. Se estiver na Opção B, ative o venv nele também. Entre no shell do Python:
+@@ -174,32 +217,39 @@ Se tudo estiver certo, isso retorna `'pong'` e o terminal do worker (seja o log
+ | Worker sobe mas a task nunca retorna | Redis não está rodando, ou está numa porta diferente | Confirme com `docker ps` que o Redis está ativo na porta 6379 |
+ | `env file ... not found` ao rodar `docker compose up` | Falta o arquivo `.env` na raiz do projeto | Rode `cp .env.example .env` (pode ficar vazio por enquanto) |
+ | `Cannot connect to redis://localhost:6379` dentro do container | Dentro do Docker, `localhost` aponta para o próprio container, não para o serviço do Redis | Já está resolvido no `docker-compose.yml` (usa `redis://redis:6379`); se acontecer de novo, confira se as variáveis `CELERY_BROKER_URL`/`CELERY_RESULT_BACKEND` do serviço `celery-worker` apontam para `redis`, não `localhost` |
++| O player só mostra os vídeos de demonstração (cards fixos) | A API não está no ar, ou nenhum vídeo foi transcodificado ainda (o catálogo real vem do `/trending` + `/relacionados`) | Suba a API (`uvicorn app.main:app`) e rode `python scripts/demo_completo.py`; abra o console do navegador (F12) para ver os motivos de fallback |
++| Player aberto via Live Server não fala com a API | O front está em outra origem (ex: `:5500`) | Já resolvido: a API tem CORS liberado em dev e o `config.js` aponta para `http://localhost:8000`. Confira se o backend está rodando |
++| Vídeo tocando mas sem imagem / 404 no `.m3u8` | O arquivo HLS não existe em `videos/{id}/` (transcodificação não terminou ou falhou) | Consulte `GET /status/{video_id}`; se estiver `failed`, veja o log do worker Celery (FFmpeg instalado?) |
+ 
+ ## Estrutura de pastas
+ 
+-**Planejada** (destino final, conforme a documentação técnica do projeto — cada branch vai preenchendo a sua parte):
+-
+ ```
+ projeto-a3/
+-├── .github/workflows/ci.yml      # Pipeline de testes (Pietro) — ainda não criado
++├── .github/workflows/ci.yml       # Pipeline: pytest (back) + Jest (player)
+ ├── app/
+-│   ├── upload/                   # feature/upload-videos (Rafael) — ainda não criado
+-│   ├── transcoding/               # feature/transcodificacao (João) — ainda não criado
+-│   ├── queue/                     # feature/processamento-assincrono (Pietro)
+-│   ├── recommendations/           # feature/recomendacoes (Gustavo) — ainda não criado
+-│   └── database/                  # cliente Supabase e queries (Pietro) — ainda não criado
+-├── frontend/player/               # feature/player-adaptativo (Pedro) — ainda não criado
+-├── uploads/                        # arquivos originais (dev local) — ainda não criado
+-├── videos/                         # arquivos processados/HLS (dev local) — ainda não criado
+-├── docker-compose.yml
++│   ├── main.py                    # FastAPI: rotas + CORS + /player + /videos
++│   ├── upload/                    # POST /upload (salva arquivo e metadados, enfileira)
++│   ├── queue/                     # Celery: tasks, broker e status em Redis
++│   ├── transcoding/               # FFmpeg: HLS multi-resolução + thumbnail
++│   ├── recommendations/           # Jaccard por tags + views (/trending, /relacionados)
++│   ├── status/                    # GET /status/{video_id} (Redis, fallback banco)
++│   └── database/                  # Supabase + fallback local (data/videos.json)
++├── player-adaptativo/player-adaptativo/   # Frontend (HLS.js, servido em /player/)
++│   ├── index.html                 # Página do player
++│   ├── config.js                  # Origem da API (mesma origem ou localhost:8000)
++│   └── js/                        # api.js, catalog.js, player.js, quality.js, ...
++├── scripts/
++│   ├── demo_completo.py           # Demo E2E: upload → fila → HLS → trending
++│   └── gerar_video_teste.py       # Vídeo sintético via FFmpeg
++├── uploads/                       # arquivos originais (dev local, fora do git)
++├── videos/                        # HLS processado (dev local, fora do git)
++├── data/                          # banco JSON local sem Supabase (fora do git)
++├── docker-compose.yml             # redis + worker + api
+ ├── Dockerfile
+ ├── requirements.txt
+-├── .env.example
+-└── README.md
++└── .env.example
+ ```
+ 
+-**O que existe hoje no repo:** a pasta `app/queue/` (celery_app.py, tasks.py e tests/), com o Celery+Redis já funcionando localmente e via Docker, e a pasta `app/database/` já criada (com `__init__.py`, ainda vazia — aguardando a conexão com o Supabase). Também já existem `docker-compose.yml`, `Dockerfile` e `requirements.txt` na raiz. O resto da estrutura ainda vai sendo criado conforme cada branch avança.
+-
+ ## Equipe
+ 
+ | Integrante | Módulo (branch) |
+diff --git a/app/database/local_store.py b/app/database/local_store.py
+new file mode 100644
+index 0000000..d9c2ae7
+--- /dev/null
++++ b/app/database/local_store.py
+@@ -0,0 +1,109 @@
++"""
++Banco local em JSON — fallback de desenvolvimento SEM Supabase.
++
++Por que existe:
++    O time ainda não criou o projeto no Supabase (veja o README). Sem
++    credenciais, `get_client()` levanta RuntimeError e TODAS as rotas que
++    tocam o banco devolviam 503 — ou seja, o frontend nunca saía do modo de
++    demonstração e a "conversa" entre back e front não acontecia.
++
++    Com este módulo, `app/database/videos.py` cai automaticamente num banco
++    JSON local (padrão: `data/videos.json`) quando o Supabase não está
++    configurado. A API inteira volta a funcionar de ponta a ponta em dev:
++    upload → fila → transcodificação → status → recomendações → player.
++
++    Assim que SUPABASE_URL/SUPABASE_KEY aparecerem no .env, o Supabase volta
++    a ser usado automaticamente — nenhuma outra linha precisa mudar.
++
++Detalhes de implementação:
++    * Arquivo único, lista de dicts (o catálogo de dev é pequeno).
++    * Lock de processo + escrita atômica (tmp → rename) para o worker Celery
++      e a API poderem escrever sem corromper o arquivo.
++    * O caminho é lido do ambiente a cada chamada (facilita testes com
++      monkeypatch.setenv).
++"""
++from __future__ import annotations
++
++import json
++import os
++import threading
++import uuid
++from datetime import datetime, timezone
++from pathlib import Path
++
++CAMINHO_PADRAO = "data/videos.json"
++
++_lock = threading.Lock()
++
++
++def caminho_do_banco() -> Path:
++    return Path(os.getenv("LOCAL_DB_PATH", CAMINHO_PADRAO))
++
++
++def _ler() -> list[dict]:
++    """Lê o catálogo; arquivo ausente ou corrompido vira lista vazia."""
++    caminho = caminho_do_banco()
++    if not caminho.is_file():
++        return []
++    try:
++        conteudo = json.loads(caminho.read_text(encoding="utf-8"))
++        return conteudo if isinstance(conteudo, list) else []
++    except (json.JSONDecodeError, OSError):
++        return []
++
++
++def _escrever(videos: list[dict]) -> None:
++    """Escrita atômica: grava num temporário e renomeia no lugar."""
++    caminho = caminho_do_banco()
++    caminho.parent.mkdir(parents=True, exist_ok=True)
++    temporario = caminho.with_suffix(".tmp")
++    temporario.write_text(
++        json.dumps(videos, ensure_ascii=False, indent=2), encoding="utf-8"
++    )
++    temporario.replace(caminho)
++
++
++def inserir(video: dict) -> dict:
++    """Insere um registro completo (formato do contrato #2) e o devolve."""
++    with _lock:
++        videos = _ler()
++        registro = dict(video)
++        registro.setdefault("video_id", str(uuid.uuid4()))
++        registro.setdefault("status", "pending")
++        registro.setdefault(
++            "criado_em", datetime.now(timezone.utc).isoformat()
++        )
++        videos.append(registro)
++        _escrever(videos)
++        return registro
++
++
++def buscar(video_id: str) -> dict | None:
++    """Busca pelo video_id; None se não existir."""
++    for video in _ler():
++        if video.get("video_id") == video_id:
++            return dict(video)
++    return None
++
++
++def atualizar_status(video_id: str, status: str) -> dict | None:
++    """Atualiza o status de um vídeo. None se ele não existir (sem erro)."""
++    with _lock:
++        videos = _ler()
++        encontrado = None
++        for video in videos:
++            if video.get("video_id") == video_id:
++                video["status"] = status
++                encontrado = video
++        if encontrado is None:
++            return None
++        _escrever(videos)
++        return dict(encontrado)
++
++
++def listar(status: str | None = None) -> list[dict]:
++    """Lista vídeos, opcionalmente filtrando por status."""
++    videos = _ler()
++    if status:
++        videos = [video for video in videos if video.get("status") == status]
++    return [dict(video) for video in videos]
+diff --git a/app/database/tests/test_local_store.py b/app/database/tests/test_local_store.py
+new file mode 100644
+index 0000000..2bf74f7
+--- /dev/null
++++ b/app/database/tests/test_local_store.py
+@@ -0,0 +1,140 @@
++"""
++Testes do banco local em JSON (fallback de dev sem Supabase).
++
++Cobrem o módulo `local_store` isolado (com LOCAL_DB_PATH apontando para
++tmp_path) e o fallback automático de `app/database/videos.py`: sem
++credenciais do Supabase, as funções do contrato #2 precisam funcionar
++exatamente igual — é o que permite a integração back ↔ front rodar sem
++serviço externo.
++"""
++from __future__ import annotations
++
++from unittest.mock import patch
++
++import pytest
++
++from app.database import local_store, videos
++
++
++@pytest.fixture(autouse=True)
++def banco_temporario(tmp_path, monkeypatch):
++    """Todas as operações deste arquivo usam um JSON dentro de tmp_path."""
++    monkeypatch.setenv("LOCAL_DB_PATH", str(tmp_path / "videos.json"))
++    return tmp_path / "videos.json"
++
++
++METADATA_EXEMPLO = {
++    "video_id": "v-123",
++    "titulo": "Frações",
++    "descricao": "aula demo",
++    "tags": ["matemática", "frações"],
++    "categoria": "Matemática",
++    "autor": "Rafael",
++    "status": "pending",
++}
++
++
++# ---------------------------------------------------------------------------
++# local_store — operações básicas
++# ---------------------------------------------------------------------------
++
++def test_inserir_devolve_o_registro_e_cria_o_arquivo(banco_temporario):
++    registro = local_store.inserir(METADATA_EXEMPLO)
++
++    assert registro["video_id"] == "v-123"
++    assert banco_temporario.is_file()
++
++
++def test_inserir_preenche_video_id_e_status_quando_faltam():
++    registro = local_store.inserir({"titulo": "Sem id"})
++
++    assert registro["video_id"]
++    assert registro["status"] == "pending"
++    assert registro["criado_em"]
++
++
++def test_buscar_encontrado_e_nao_encontrado():
++    local_store.inserir(METADATA_EXEMPLO)
++
++    assert local_store.buscar("v-123")["titulo"] == "Frações"
++    assert local_store.buscar("nao-existe") is None
++
++
++def test_atualizar_status_muda_apenas_o_status():
++    local_store.inserir(METADATA_EXEMPLO)
++
++    atualizado = local_store.atualizar_status("v-123", "completed")
++
++    assert atualizado["status"] == "completed"
++    assert atualizado["titulo"] == "Frações"
++    assert local_store.buscar("v-123")["status"] == "completed"
++
++
++def test_atualizar_status_de_video_inexistente_devolve_none_sem_escrever(banco_temporario):
++    assert local_store.atualizar_status("fantasma", "completed") is None
++    assert not banco_temporario.exists()
++
++
++def test_listar_com_e_sem_filtro_de_status():
++    local_store.inserir({**METADATA_EXEMPLO, "video_id": "a", "status": "completed"})
++    local_store.inserir({**METADATA_EXEMPLO, "video_id": "b", "status": "pending"})
++
++    assert len(local_store.listar()) == 2
++    assert [v["video_id"] for v in local_store.listar(status="completed")] == ["a"]
++
++
++def test_arquivo_corrompido_vira_catalogo_vazio(banco_temporario):
++    banco_temporario.write_text("{isso não é json", encoding="utf-8")
++
++    assert local_store.listar() == []
++    assert local_store.buscar("v-123") is None
++
++
++# ---------------------------------------------------------------------------
++# videos.py — fallback automático quando o Supabase não está configurado
++# ---------------------------------------------------------------------------
++
++@pytest.fixture
++def sem_supabase():
++    """Simula o cenário real de dev: get_client() levanta RuntimeError."""
++    with patch(
++        "app.database.videos.get_client",
++        side_effect=RuntimeError("SUPABASE_URL e/ou SUPABASE_KEY não estão definidas"),
++    ):
++        yield
++
++
++def test_inserir_video_sem_supabase_usa_o_banco_local(sem_supabase):
++    registro = videos.inserir_video(METADATA_EXEMPLO)
++
++    assert registro["video_id"] == "v-123"
++    assert local_store.buscar("v-123") is not None
++
++
++def test_buscar_video_sem_supabase_usa_o_banco_local(sem_supabase):
++    local_store.inserir(METADATA_EXEMPLO)
++
++    assert videos.buscar_video("v-123")["titulo"] == "Frações"
++    assert videos.buscar_video("nao-existe") is None
++
++
++def test_atualizar_status_sem_supabase_usa_o_banco_local(sem_supabase):
++    local_store.inserir(METADATA_EXEMPLO)
++
++    videos.atualizar_status("v-123", "completed")
++
++    assert local_store.buscar("v-123")["status"] == "completed"
++
++
++def test_listar_videos_sem_supabase_usa_o_banco_local(sem_supabase):
++    local_store.inserir({**METADATA_EXEMPLO, "video_id": "a", "status": "completed"})
++    local_store.inserir({**METADATA_EXEMPLO, "video_id": "b", "status": "pending"})
++
++    assert len(videos.listar_videos(status="completed")) == 1
++
++
++def test_criar_video_sem_supabase_usa_o_banco_local(sem_supabase):
++    registro = videos.criar_video(titulo="Nova aula", categoria="Física")
++
++    assert registro["titulo"] == "Nova aula"
++    assert local_store.buscar(registro["video_id"]) is not None
+diff --git a/app/database/videos.py b/app/database/videos.py
+index eb8ca27..075cec2 100644
+--- a/app/database/videos.py
++++ b/app/database/videos.py
+@@ -1,17 +1,57 @@
++"""
++Acesso aos metadados de vídeos — Supabase com fallback local automático.
++
++Cada função tenta primeiro o Supabase (produção). Se as credenciais não
++estiverem configuradas (`get_client()` levanta RuntimeError), cai no banco
++JSON local de `app/database/local_store.py` — assim o projeto inteiro roda
++em desenvolvimento sem depender de serviço externo, e a integração
++backend ↔ frontend pode ser testada de ponta a ponta.
++
++Quem chama estas funções NÃO precisa saber qual backend está em uso: a
++assinatura e o formato de retorno (contrato #2) são os mesmos nos dois casos.
++"""
++from __future__ import annotations
++
++import logging
++
++from app.database import local_store
+ from app.database.client import get_client
+ 
++logger = logging.getLogger(__name__)
++
+ TABLE = "videos"
+ 
++_aviso_dado = False
++
++
++def _cliente_supabase():
++    """Devolve o client do Supabase ou None quando ele não está configurado.
++
++    O aviso é logado uma única vez para não poluir os logs (as rotas de
++    recomendação chamam `buscar_video` em loop).
++    """
++    global _aviso_dado
++    try:
++        return get_client()
++    except RuntimeError as exc:
++        if not _aviso_dado:
++            logger.warning(
++                "Supabase não configurado — usando banco local em %s. (%s)",
++                local_store.caminho_do_banco(),
++                exc,
++            )
++            _aviso_dado = True
++        return None
++
+ 
+ def criar_video(titulo: str, descricao: str = None, tags: str = None,
+-                 categoria: str = None, autor: str = None) -> dict:
++                categoria: str = None, autor: str = None) -> dict:
+     """
+     Insere um novo registro na tabela videos.
+     status e criado_em usam os valores default definidos no banco
+     (status='pending', criado_em=now()).
+     Retorna o registro criado (incluindo o video_id gerado).
+     """
+-    client = get_client()
+     payload = {
+         "titulo": titulo,
+         "descricao": descricao,
+@@ -19,27 +59,51 @@ def criar_video(titulo: str, descricao: str = None, tags: str = None,
+         "categoria": categoria,
+         "autor": autor,
+     }
++
++    client = _cliente_supabase()
++    if client is None:
++        return local_store.inserir(payload)
++
+     response = client.table(TABLE).insert(payload).execute()
+     return response.data[0]
+ 
+ 
++def inserir_video(metadata: dict) -> dict:
++    """
++    Insere um registro COMPLETO (video_id, criado_em e status já definidos
++    por quem chama — é o caso do módulo de upload, que gera o UUID).
++    """
++    client = _cliente_supabase()
++    if client is None:
++        return local_store.inserir(metadata)
++
++    response = client.table(TABLE).insert(metadata).execute()
++    return response.data[0]
++
++
+ def buscar_video(video_id: str) -> dict | None:
+     """
+     Busca um vídeo pelo video_id. Retorna None se não encontrar.
+     """
+-    client = get_client()
++    client = _cliente_supabase()
++    if client is None:
++        return local_store.buscar(video_id)
++
+     response = client.table(TABLE).select("*").eq("video_id", video_id).execute()
+     if not response.data:
+         return None
+     return response.data[0]
+ 
+ 
+-def atualizar_status(video_id: str, status: str) -> dict:
++def atualizar_status(video_id: str, status: str) -> dict | None:
+     """
+     Atualiza o status de um vídeo (pending, processing, completed, failed).
+     Usada pelas tasks do Celery para refletir o progresso do processamento.
+     """
+-    client = get_client()
++    client = _cliente_supabase()
++    if client is None:
++        return local_store.atualizar_status(video_id, status)
++
+     response = (
+         client.table(TABLE)
+         .update({"status": status})
+@@ -53,9 +117,12 @@ def listar_videos(status: str = None) -> list[dict]:
+     """
+     Lista vídeos, opcionalmente filtrando por status.
+     """
+-    client = get_client()
++    client = _cliente_supabase()
++    if client is None:
++        return local_store.listar(status)
++
+     query = client.table(TABLE).select("*")
+     if status:
+         query = query.eq("status", status)
+     response = query.execute()
+-    return response.data
+\ No newline at end of file
++    return response.data
+diff --git a/app/main.py b/app/main.py
+index a810aff..0f001c5 100644
+--- a/app/main.py
++++ b/app/main.py
+@@ -1,14 +1,58 @@
++"""
++Ponto de entrada da API — Plataforma de Vídeo Educacional.
++
++Além de registrar as rotas dos módulos (upload, status, recomendações), este
++arquivo resolve a INTEGRAÇÃO com o frontend (player adaptativo):
++
++  1. CORS liberado para desenvolvimento — sem isso, quando o player é aberto
++     de outra origem (Live Server na :5500, `python -m http.server`, etc.), o
++     navegador BLOQUEIA todos os `fetch` para a API e o front só mostra os
++     vídeos de demonstração.
++  2. `/videos` serve os arquivos gerados pela transcodificação (master.m3u8,
++     playlists, segmentos .ts e thumbnails). A API devolve `hls_url` e
++     `thumbnail_url` apontando para cá — antes esses arquivos existiam só no
++     disco e nenhuma rota os entregava, então o player nunca dava play.
++  3. `/player` serve o frontend direto do backend (mesma origem — a forma mais
++     simples de rodar tudo: `uvicorn app.main:app` e abrir
++     http://localhost:8000/player/).
++"""
++import mimetypes
++import os
++from pathlib import Path
++
+ from fastapi import FastAPI
++from fastapi.middleware.cors import CORSMiddleware
++from fastapi.staticfiles import StaticFiles
+ 
+ from app.upload.router import router as upload_router
+ from app.status.router import router as status_router
+ from app.recommendations.router import router as recommendations_router
+ 
++# O Starlette descobre o Content-Type pelo módulo `mimetypes` do Python, que
++# não conhece .m3u8/.ts em todas as versões. Sem o tipo correto alguns players
++# se recusam a carregar a playlist — registramos explicitamente.
++mimetypes.add_type("application/vnd.apple.mpegurl", ".m3u8")
++mimetypes.add_type("video/mp2t", ".ts")
++
++# Mesmas variáveis usadas pelos módulos de upload/transcodificação.
++VIDEOS_DIR = Path(os.getenv("VIDEOS_DIR", "videos"))
++PLAYER_DIR = Path(os.getenv("PLAYER_DIR", "player-adaptativo/player-adaptativo"))
++
+ app = FastAPI(
+     title="Plataforma de Vídeo Educacional",
+     description="API para upload, processamento e recomendação de vídeos educacionais.",
+ )
+ 
++# CORS permissivo: o projeto é educacional e roda em localhost. Se um dia for
++# publicado, troque allow_origins pelos domínios reais do front.
++app.add_middleware(
++    CORSMiddleware,
++    allow_origins=["*"],
++    allow_credentials=False,
++    allow_methods=["*"],
++    allow_headers=["*"],
++)
++
+ app.include_router(upload_router)
+ app.include_router(status_router)
+ app.include_router(recommendations_router)
+@@ -20,4 +64,21 @@ def health():
+         "status": "ok",
+         "rotas": ["/upload", "/status/{video_id}", "/videos/{video_id}/relacionados",
+                   "/recomendacoes/{user_id}", "/trending", "/watch"],
++        "player": "/player/",
+     }
++
++
++# ---------------------------------------------------------------------------
++# Arquivos estáticos — registrados DEPOIS das rotas para não engolir
++# /videos/{video_id}/relacionados (no Starlette a ordem de registro importa).
++# ---------------------------------------------------------------------------
++
++# Garante que a pasta exista: StaticFiles levanta erro na inicialização se o
++# diretório não existir (e em dev ela só é criada na primeira transcodificação).
++VIDEOS_DIR.mkdir(parents=True, exist_ok=True)
++app.mount("/videos", StaticFiles(directory=str(VIDEOS_DIR)), name="midia")
++
++# O player vem junto no repositório; se a pasta não estiver presente (ex: o
++# backend foi copiado para outro lugar), a API continua funcionando sem o mount.
++if PLAYER_DIR.is_dir():
++    app.mount("/player", StaticFiles(directory=str(PLAYER_DIR), html=True), name="player")
+diff --git a/app/queue/tasks.py b/app/queue/tasks.py
+index eb7b5d8..4c9b6d6 100644
+--- a/app/queue/tasks.py
++++ b/app/queue/tasks.py
+@@ -1,7 +1,31 @@
++import logging
++
++from app.database.videos import atualizar_status
+ from app.queue.celery_app import celery_app
+ from app.queue.status_store import set_status
+ from app.transcoding import processar  # módulo do João
+ 
++logger = logging.getLogger(__name__)
++
++
++def _sincronizar_banco(video_id: str, status: str) -> None:
++    """Reflete o status no banco (Supabase ou fallback local).
++
++    O Redis alimenta o /status em tempo real, mas o CATÁLOGO (e portanto as
++    recomendações, o /trending e os cards do player) lê do banco filtrando
++    status='completed'. Sem esta sincronização o vídeo transcodificava, o
++    /status dizia "completed", mas ele nunca aparecia no frontend.
++
++    Falha aqui não pode derrubar a task: loga e segue (o Redis já tem o status).
++    """
++    try:
++        atualizar_status(video_id, status)
++    except Exception as exc:
++        logger.warning(
++            "Não foi possível atualizar o status de %s para '%s' no banco: %s",
++            video_id, status, exc,
++        )
++
+ 
+ @celery_app.task(name="app.queue.tasks.hello_world")
+ def hello_world():
+@@ -36,12 +60,14 @@ def transcodificar_video(self, video_id: str, caminho_original: str):
+         # acontecer, já que processar() trata tudo internamente.
+         if self.request.retries >= self.max_retries:
+             set_status(video_id, "failed", {"erro": str(exc)})
++            _sincronizar_banco(video_id, "failed")
+             raise
+         atraso = backoff[min(self.request.retries, len(backoff) - 1)]
+         raise self.retry(exc=exc, countdown=atraso)
+ 
+     if resultado["status"] == "failed":
+         set_status(video_id, "failed", {"erro": resultado["error"]})
++        _sincronizar_banco(video_id, "failed")
+         if self.request.retries >= self.max_retries:
+             # Esgotou as tentativas: não faz mais sentido levantar retry,
+             # deixa o status "failed" registrado e encerra a task normalmente.
+@@ -54,6 +80,7 @@ def transcodificar_video(self, video_id: str, caminho_original: str):
+ 
+     # status == "completed"
+     set_status(video_id, "completed", {"caminho_hls": resultado["caminho_hls"]})
++    _sincronizar_banco(video_id, "completed")
+     return resultado
+ 
+ 
+@@ -61,6 +88,7 @@ def transcodificar_video(self, video_id: str, caminho_original: str):
+ def processar_upload(video_id: str, caminho_arquivo: str):
+     """Dispara a etapa de transcodificação após validar o upload."""
+     set_status(video_id, "processing")
++    _sincronizar_banco(video_id, "processing")
+     transcodificar_video.delay(video_id, caminho_arquivo)
+     return {"video_id": video_id, "status": "processing"}
+ 
+diff --git a/app/recommendations/router.py b/app/recommendations/router.py
+index eeb1013..64bbce5 100644
+--- a/app/recommendations/router.py
++++ b/app/recommendations/router.py
+@@ -22,7 +22,7 @@ from __future__ import annotations
+ 
+ import logging
+ 
+-from fastapi import APIRouter, HTTPException, Query
++from fastapi import APIRouter, HTTPException, Query, Request
+ from pydantic import BaseModel, Field
+ 
+ from app.database.videos import buscar_video, listar_videos
+@@ -72,15 +72,37 @@ def _executar_no_banco(operacao, *args, **kwargs):
+         ) from exc
+ 
+ 
+-def _enriquecer(video: dict, score: float | None = None) -> dict:
++def _url_absoluta(request: Request | None, caminho: str) -> str:
++    """Transforma '/videos/x/master.m3u8' em URL absoluta usando a origem da
++    requisição (ex: 'http://localhost:8000/videos/x/master.m3u8').
++
++    Por quê: o player roda em origem própria quando aberto via Live Server ou
++    outro host. Com URL relativa, o navegador resolve contra a origem do
++    FRONT (que não tem esses arquivos) e o vídeo/thumbnail dá 404. URL
++    absoluta funciona nas duas montagens (mesma origem ou CORS).
++    """
++    if request is None:
++        return caminho
++    base = str(request.base_url).rstrip("/")
++    return f"{base}{caminho}"
++
++
++def _enriquecer(video: dict, score: float | None = None,
++                request: Request | None = None) -> dict:
+     """Acrescenta ao metadado do contrato #2 o que o player usa no card."""
+     video_id = video.get("video_id")
+     resposta = {
+         **video,
+         "tags": normalizar_tags(video.get("tags")),
+         "views": views_store.contar_visualizacoes(video_id) if video_id else 0,
+-        "hls_url": f"/videos/{video_id}/master.m3u8" if video_id else None,
+-        "thumbnail_url": f"/videos/{video_id}/thumbnail.jpg" if video_id else None,
++        "hls_url": (
++            _url_absoluta(request, f"/videos/{video_id}/master.m3u8")
++            if video_id else None
++        ),
++        "thumbnail_url": (
++            _url_absoluta(request, f"/videos/{video_id}/thumbnail.jpg")
++            if video_id else None
++        ),
+     }
+     if score is not None:
+         resposta["score"] = score
+@@ -98,6 +120,7 @@ def _catalogo_pronto() -> list[dict]:
+ 
+ @router.get("/videos/{video_id}/relacionados")
+ def videos_relacionados(
++    request: Request,
+     video_id: str,
+     limite: int = Query(default=5, ge=1, le=50),
+ ):
+@@ -116,7 +139,8 @@ def videos_relacionados(
+     return {
+         "video_id": video_id,
+         "relacionados": [
+-            _enriquecer(video, score=video["score"]) for video in parecidos[:limite]
++            _enriquecer(video, score=video["score"], request=request)
++            for video in parecidos[:limite]
+         ],
+     }
+ 
+@@ -127,6 +151,7 @@ def videos_relacionados(
+ 
+ @router.get("/recomendacoes/{user_id}")
+ def recomendacoes_personalizadas(
++    request: Request,
+     user_id: str,
+     limite: int = Query(default=5, ge=1, le=50),
+ ):
+@@ -165,7 +190,8 @@ def recomendacoes_personalizadas(
+     return {
+         "user_id": user_id,
+         "recomendacoes": [
+-            _enriquecer(video, score=video["score"]) for video in sugeridos[:limite]
++            _enriquecer(video, score=video["score"], request=request)
++            for video in sugeridos[:limite]
+         ],
+     }
+ 
+@@ -175,7 +201,7 @@ def recomendacoes_personalizadas(
+ # ---------------------------------------------------------------------------
+ 
+ @router.get("/trending")
+-def trending(limite: int = Query(default=10, ge=1, le=50)):
++def trending(request: Request, limite: int = Query(default=10, ge=1, le=50)):
+     """Mais assistidos, segundo o contador em Redis."""
+     ranking = views_store.mais_assistidos(limite)
+ 
+@@ -189,7 +215,7 @@ def trending(limite: int = Query(default=10, ge=1, le=50)):
+             # O vídeo pode ter sido apagado do banco; o ranking não pode quebrar.
+             logger.warning("video_id %s no ranking mas não está no banco", video_id)
+             continue
+-        enriquecido = _enriquecer(video)
++        enriquecido = _enriquecer(video, request=request)
+         enriquecido["views"] = views
+         videos.append(enriquecido)
+ 
+diff --git a/app/recommendations/tests/test_router.py b/app/recommendations/tests/test_router.py
+index a23c9ac..af316db 100644
+--- a/app/recommendations/tests/test_router.py
++++ b/app/recommendations/tests/test_router.py
+@@ -182,11 +182,13 @@ def test_relacionados_devolve_tags_como_lista(api):
+ 
+ 
+ def test_relacionados_traz_as_urls_de_midia_do_contrato_1(api):
++    """URLs absolutas: o player pode estar em outra origem (Live Server) —
++    com URL relativa o navegador resolveria contra o front e daria 404."""
+     resposta = client.get("/videos/v-fra/relacionados")
+ 
+     item = resposta.json()["relacionados"][0]
+-    assert item["hls_url"] == f"/videos/{item['video_id']}/master.m3u8"
+-    assert item["thumbnail_url"] == f"/videos/{item['video_id']}/thumbnail.jpg"
++    assert item["hls_url"] == f"http://testserver/videos/{item['video_id']}/master.m3u8"
++    assert item["thumbnail_url"] == f"http://testserver/videos/{item['video_id']}/thumbnail.jpg"
+ 
+ 
+ def test_relacionados_inclui_a_contagem_de_views(api, views):
+diff --git a/app/status/router.py b/app/status/router.py
+index b7b2e9a..d7fae00 100644
+--- a/app/status/router.py
++++ b/app/status/router.py
+@@ -1,12 +1,55 @@
++"""
++Rota de status do processamento (contrato #5).
++
++    GET /status/{video_id} -> pending | processing | completed | failed
++
++Duas fontes, em ordem de prioridade:
++  1. Redis (`status_store`) — gravado pelas tasks do Celery em tempo real;
++  2. Banco (Supabase ou fallback local) — usado quando o Redis não tem o
++     vídeo ou está fora do ar.
++
++Antes, qualquer falha de Redis virava 500 na cara do frontend; e um vídeo
++recém-enviado (fila ainda sem worker) devolvia 404 mesmo existindo no banco.
++O fallback mantém o player informado em qualquer cenário.
++"""
++from __future__ import annotations
++
++import logging
++
+ from fastapi import APIRouter, HTTPException
+ 
++from app.database.videos import buscar_video
+ from app.queue.status_store import get_status
+ 
++logger = logging.getLogger(__name__)
++
+ router = APIRouter()
+ 
++
+ @router.get("/status/{video_id}")
+ def consultar_status(video_id: str):
+-    status = get_status(video_id)
+-    if status is None:
+-        raise HTTPException(status_code=404, detail="video_id não encontrado")
+-    return status
+\ No newline at end of file
++    status = None
++    try:
++        status = get_status(video_id)
++    except Exception as exc:  # Redis fora do ar não pode derrubar a rota
++        logger.warning("Redis indisponível ao consultar status de %s: %s", video_id, exc)
++
++    if status is not None:
++        return status
++
++    # Fallback: o banco conhece o vídeo (o upload grava status='pending' lá,
++    # e a task atualiza para completed/failed quando o processamento acaba).
++    try:
++        video = buscar_video(video_id)
++    except Exception as exc:
++        logger.warning("Banco indisponível ao consultar vídeo %s: %s", video_id, exc)
++        video = None
++
++    if video is not None:
++        return {
++            "video_id": video_id,
++            "status": video.get("status", "pending"),
++            "origem": "banco",
++        }
++
++    raise HTTPException(status_code=404, detail="video_id não encontrado")
+diff --git a/app/status/tests/test_router.py b/app/status/tests/test_router.py
+index 5fd2294..5b3eb79 100644
+--- a/app/status/tests/test_router.py
++++ b/app/status/tests/test_router.py
+@@ -109,3 +109,51 @@ def test_404_nao_vaza_stacktrace_500(monkeypatch):
+     resposta = client.get("/status/nao-existe")
+ 
+     assert resposta.status_code != 500
++
++
++# ---------------------------------------------------------------------------
++# Fallback para o banco (Redis fora do ar ou vídeo ainda sem status na fila)
++# ---------------------------------------------------------------------------
++
++def test_redis_fora_do_ar_consulta_o_banco(monkeypatch):
++    """ConnectionError do Redis não pode virar 500 — o banco é a 2ª fonte."""
++    import redis as modulo_redis
++
++    def _get_status_quebrado(video_id: str):
++        raise modulo_redis.ConnectionError("Connection refused")
++
++    monkeypatch.setattr("app.status.router.get_status", _get_status_quebrado)
++    monkeypatch.setattr(
++        "app.status.router.buscar_video",
++        lambda video_id: {"video_id": video_id, "status": "completed"},
++    )
++
++    resposta = client.get("/status/abc-123")
++
++    assert resposta.status_code == 200
++    assert resposta.json()["status"] == "completed"
++    assert resposta.json()["origem"] == "banco"
++
++
++def test_video_pendente_sem_fila_aparece_pelo_banco(monkeypatch):
++    """Upload recém-feito: Redis ainda não tem status, mas o banco tem 'pending'."""
++    monkeypatch.setattr("app.status.router.get_status", responder_com(None))
++    monkeypatch.setattr(
++        "app.status.router.buscar_video",
++        lambda video_id: {"video_id": video_id, "status": "pending"},
++    )
++
++    resposta = client.get("/status/novo-video")
++
++    assert resposta.status_code == 200
++    assert resposta.json()["status"] == "pending"
++
++
++def test_404_quando_nem_redis_nem_banco_conhecem_o_video(monkeypatch):
++    monkeypatch.setattr("app.status.router.get_status", responder_com(None))
++    monkeypatch.setattr("app.status.router.buscar_video", lambda video_id: None)
++
++    resposta = client.get("/status/fantasma")
++
++    assert resposta.status_code == 404
++    assert resposta.json()["detail"] == "video_id não encontrado"
+diff --git a/app/upload/router.py b/app/upload/router.py
+index ff5c892..df67cc0 100644
+--- a/app/upload/router.py
++++ b/app/upload/router.py
+@@ -1,3 +1,4 @@
++import logging
+ import os
+ import shutil
+ import uuid
+@@ -6,6 +7,8 @@ from pathlib import Path
+ 
+ from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+ 
++logger = logging.getLogger(__name__)
++
+ router = APIRouter()
+ 
+ ALLOWED_EXTENSIONS = {".mp4", ".avi", ".mov", ".webm"}
+@@ -29,12 +32,47 @@ def parse_tags(tags: str) -> list[str]:
+     return [tag.strip() for tag in tags.split(",") if tag.strip()]
+ 
+ 
+-from app.database.client import get_client
++from app.database.videos import inserir_video
+ 
+ def save_metadata(metadata: dict):
+-    supabase = get_client()
+-    response = supabase.table("videos").insert(metadata).execute()
+-    return response.data
++    """Persiste os metadados do vídeo (Supabase, ou banco local em dev).
++
++    Antes esta função falava direto com o client do Supabase e estourava
++    RuntimeError sem credenciais — o upload inteiro virava 500. Agora usa
++    `inserir_video`, que tem fallback local automático.
++    """
++    return inserir_video(metadata)
++
++
++def _enfileirar_processamento(video_id: str, file_path: str) -> str:
++    """Marca status 'pending' no Redis e dispara a task do Celery.
++
++    Devolve uma string para a resposta da API:
++      * "enfileirado"  — a task foi publicada no broker;
++      * "indisponivel" — Redis/broker fora do ar. O upload CONTINUA válido
++        (arquivo e metadados foram salvos); só o processamento automático
++        não dispara. Nada de derrubar a rota por causa da fila.
++
++    A task `processar_upload` (app/queue/tasks.py) marca "processing", chama
++    a transcodificação do João e grava "completed"/"failed" no status e no
++    banco — é o que faz /status/{video_id} e o catálogo do player funcionarem.
++    """
++    resultado = "indisponivel"
++    try:
++        from app.queue.status_store import set_status
++        set_status(video_id, "pending")
++    except Exception:
++        logger.warning("Redis fora do ar — status 'pending' não registrado para %s", video_id)
++
++    try:
++        from app.queue.tasks import processar_upload
++        processar_upload.delay(video_id, file_path)
++        resultado = "enfileirado"
++    except Exception as exc:
++        logger.warning(
++            "Não foi possível enfileirar %s (broker fora do ar?): %s", video_id, exc
++        )
++    return resultado
+ 
+ 
+ @router.post("/upload")
+@@ -101,9 +139,13 @@ async def upload_video(
+ 
+     save_metadata(metadata)
+ 
++    fila = _enfileirar_processamento(video_id, str(file_path))
++
+     return {
+         "video_id": video_id,
+         "status": "pending",
+         "message": "Upload recebido com sucesso",
+         "file_path": str(file_path),
++        "fila": fila,
++        "status_url": f"/status/{video_id}",
+     }
+\ No newline at end of file
+diff --git a/app/upload/tests/test_upload.py b/app/upload/tests/test_upload.py
+index 7d91878..1069e36 100644
+--- a/app/upload/tests/test_upload.py
++++ b/app/upload/tests/test_upload.py
+@@ -14,6 +14,9 @@ def configurar_testes(tmp_path, monkeypatch):
+     monkeypatch.setattr(router, "UPLOAD_DIR", tmp_path)
+     monkeypatch.setattr(router, "MAX_SIZE", 1024 * 1024)
+     monkeypatch.setattr(router, "save_metadata", lambda metadata: metadata)
++    # Isola a fila: testes unitários não publicam tasks no broker real.
++    monkeypatch.setattr(router, "_enfileirar_processamento",
++                        lambda video_id, file_path: "enfileirado")
+ 
+ 
+ def dados_validos():
+@@ -143,4 +146,59 @@ def test_upload_com_autor_vazio():
+         data=dados,
+     )
+ 
+-    assert response.status_code == 400
+\ No newline at end of file
++    assert response.status_code == 400
++
++
++# ---------------------------------------------------------------------------
++# Integração upload → fila → status (a "conversa" com o frontend)
++# ---------------------------------------------------------------------------
++
++def test_resposta_inclui_fila_e_status_url():
++    """O front usa status_url para acompanhar o processamento via polling."""
++    arquivo = io.BytesIO(b"conteudo falso de video")
++
++    response = client.post(
++        "/upload",
++        files={"file": ("video.mp4", arquivo, "video/mp4")},
++        data=dados_validos(),
++    )
++
++    body = response.json()
++    assert body["fila"] == "enfileirado"
++    assert body["status_url"] == f"/status/{body['video_id']}"
++
++
++def test_processamento_e_enfileirado_com_video_id_e_caminho(tmp_path, monkeypatch):
++    chamadas = []
++    monkeypatch.setattr(
++        router, "_enfileirar_processamento",
++        lambda video_id, file_path: chamadas.append((video_id, file_path)) or "enfileirado",
++    )
++
++    arquivo = io.BytesIO(b"conteudo falso de video")
++    response = client.post(
++        "/upload",
++        files={"file": ("video.mp4", arquivo, "video/mp4")},
++        data=dados_validos(),
++    )
++
++    video_id = response.json()["video_id"]
++    assert chamadas == [(video_id, str(tmp_path / video_id / "original.mp4"))]
++
++
++def test_broker_fora_do_ar_nao_derruba_o_upload(monkeypatch):
++    """Fila indisponível: o upload continua válido, só avisa em 'fila'."""
++    def _fila_indisponivel(video_id, file_path):
++        return "indisponivel"
++
++    monkeypatch.setattr(router, "_enfileirar_processamento", _fila_indisponivel)
++
++    arquivo = io.BytesIO(b"conteudo falso de video")
++    response = client.post(
++        "/upload",
++        files={"file": ("video.mp4", arquivo, "video/mp4")},
++        data=dados_validos(),
++    )
++
++    assert response.status_code == 200
++    assert response.json()["fila"] == "indisponivel"
+diff --git a/player-adaptativo/player-adaptativo/config.js b/player-adaptativo/player-adaptativo/config.js
+new file mode 100644
+index 0000000..efffa11
+--- /dev/null
++++ b/player-adaptativo/player-adaptativo/config.js
+@@ -0,0 +1,29 @@
++/**
++ * Configuração do player — carregado pelo index.html ANTES de js/player.js.
++ *
++ * Este arquivo existia só como exemplo (config.example.js) e a página não o
++ * carregava: qualquer ajuste de API exigia editar o código do player. Agora a
++ * configuração tem um lugar só, com padrões inteligentes:
++ *
++ *   • Se a página foi servida pelo próprio backend
++ *     (http://localhost:8000/player/), a API está na MESMA origem — usamos
++ *     `window.location.origin` e tudo funciona sem CORS, em qualquer host/porta.
++ *   • Se a página foi aberta de outro servidor (Live Server :5500,
++ *     `python -m http.server`, etc.), usamos http://localhost:8000 (o backend
++ *     tem CORS liberado para desenvolvimento).
++ *
++ * Para apontar para outra API (ex: backend na nuvem), defina API_BASE_URL
++ * antes deste script ou edite a linha abaixo:
++ *
++ *   window.PLAYER_CONFIG = { API_BASE_URL: "https://api.exemplo.com" };
++ */
++window.PLAYER_CONFIG = window.PLAYER_CONFIG || {};
++
++(function () {
++  var origem = window.location && window.location.origin;
++  var servidaPorHttp = typeof origem === "string" && /^https?:/.test(origem);
++
++  window.PLAYER_CONFIG.API_BASE_URL =
++    window.PLAYER_CONFIG.API_BASE_URL ||
++    (servidaPorHttp ? origem : "http://localhost:8000");
++})();
+diff --git a/player-adaptativo/player-adaptativo/index.html b/player-adaptativo/player-adaptativo/index.html
+index 58bf662..31fd850 100644
+--- a/player-adaptativo/player-adaptativo/index.html
++++ b/player-adaptativo/player-adaptativo/index.html
+@@ -140,6 +140,8 @@
+     apresentação. Proveniência e checksum em ./vendor/README.md.
+   -->
+   <script src="./vendor/hls.min.js"></script>
++  <!-- Configuração da API (origem do backend) — precisa vir antes do player. -->
++  <script src="./config.js"></script>
+   <script type="module" src="./js/player.js"></script>
+ </body>
+ </html>
+diff --git a/player-adaptativo/player-adaptativo/js/player.js b/player-adaptativo/player-adaptativo/js/player.js
+index fc6cbd0..67cc888 100644
+--- a/player-adaptativo/player-adaptativo/js/player.js
++++ b/player-adaptativo/player-adaptativo/js/player.js
+@@ -6,6 +6,7 @@ import {
+   DEMO_VIDEOS
+ } from "./recommendations.js";
+ import { atualizarCatalogoDaApi, registrarVisualizacao } from "./catalog.js";
++import { API_BASE_URL } from "./api.js";
+ 
+ const CONFIG = {
+   // Durante o desenvolvimento, troque por um master.m3u8 real.
+@@ -18,6 +19,22 @@ const CONFIG = {
+   USER_ID: window.PLAYER_CONFIG?.USER_ID || "demo-user"
+ };
+ 
++/**
++ * Resolve uma URL de mídia vinda da API para uma URL utilizável no navegador.
++ *
++ * A API devolve URLs absolutas (http://host:8000/videos/...), mas se vier um
++ * caminho relativo de raiz ("/videos/..."), ele precisa ser prefixado com a
++ * origem do BACKEND — senão o navegador resolve contra a origem do front
++ * (Live Server :5500, por exemplo) e o vídeo dá 404.
++ * URLs relativas à página ("./videos/...") e absolutas passam intactas.
++ */
++function resolveMediaUrl(url) {
++  if (!url || typeof url !== "string") return url;
++  if (/^https?:\/\//i.test(url)) return url;
++  if (url.startsWith("/")) return `${API_BASE_URL}${url}`;
++  return url;
++}
++
+ const video = document.querySelector("#video");
+ 
+ const elements = {
+@@ -63,11 +80,7 @@ function initialize() {
+   // Enhancement progressivo: os cards de demonstração já estão na tela; aqui
+   // tentamos trocá-los pelos dados reais da API. Se o backend estiver fora,
+   // `atualizarCatalogoDaApi` devolve listas vazias e nada é redesenhado.
+-  atualizarCatalogoDaApi({
+-    relatedContainer: elements.relatedVideos,
+-    sidebarContainer: elements.sidebarVideos,
+-    videoId: CONFIG.VIDEO_ID
+-  }).catch((error) => console.info("Catálogo da API indisponível:", error));
++  carregarCatalogo(CONFIG.VIDEO_ID);
+ 
+   registrarVisualizacao(CONFIG.VIDEO_ID, CONFIG.USER_ID);
+ 
+@@ -97,7 +110,12 @@ function initialize() {
+     registrarVisualizacao(selected?.id, CONFIG.USER_ID);
+ 
+     if (selected?.hlsUrl) {
+-      loadVideo(selected.hlsUrl, selected);
++      CONFIG.VIDEO_ID = selected.id;
++      loadVideo(resolveMediaUrl(selected.hlsUrl), selected);
++
++      // Os "relacionados" passam a ser os do vídeo recém-escolhido — é a
++      // conversa com o backend: GET /videos/{novo_id}/relacionados.
++      carregarCatalogo(selected.id, { autoSelecionar: false });
+     } else {
+       console.info("Vídeo selecionado no mock:", selected);
+     }
+@@ -106,6 +124,49 @@ function initialize() {
+   loadVideo();
+ }
+ 
++/**
++ * Busca relacionados + em alta na API e redesenha os cards.
++ *
++ * Com `autoSelecionar` (padrão na primeira carga), o primeiro vídeo real
++ * disponível vira o vídeo em reprodução — é o que faz a página mostrar
++ * conteúdo DE VERDADE do backend em vez do master.m3u8 de demonstração
++ * (que não existe no repositório). Falha em qualquer etapa mantém os demos.
++ */
++function carregarCatalogo(videoId, { autoSelecionar = true } = {}) {
++  return atualizarCatalogoDaApi({
++    relatedContainer: elements.relatedVideos,
++    sidebarContainer: elements.sidebarVideos,
++    videoId
++  })
++    .then(({ relacionados, emAlta }) => {
++      if (autoSelecionar) {
++        selecionarVideoInicialDaApi([...emAlta, ...relacionados]);
++      }
++      return { relacionados, emAlta };
++    })
++    .catch((error) => console.info("Catálogo da API indisponível:", error));
++}
++
++/**
++ * Toca o primeiro vídeo real do catálogo da API, se houver.
++ *
++ * Não faz nada quando:
++ *   • o integrador configurou HLS_URL explicitamente (config.js) — a
++ *     configuração manual sempre vence;
++ *   • a API não devolveu nenhum vídeo com stream pronto (backend fora, sem
++ *     banco, nada transcodificado ainda) — o player segue com a demonstração.
++ */
++function selecionarVideoInicialDaApi(videos) {
++  if (window.PLAYER_CONFIG?.HLS_URL) return;
++
++  const primeiro = (videos || []).find((video) => video?.hlsUrl);
++  if (!primeiro) return;
++
++  CONFIG.VIDEO_ID = primeiro.id;
++  registrarVisualizacao(primeiro.id, CONFIG.USER_ID);
++  loadVideo(resolveMediaUrl(primeiro.hlsUrl), primeiro);
++}
++
+ function loadVideo(url = CONFIG.HLS_URL, metadata = null) {
+   clearRetryTimer();
+   destroyHls();
+diff --git a/player-adaptativo/player-adaptativo/tests/player.integracao-api.test.js b/player-adaptativo/player-adaptativo/tests/player.integracao-api.test.js
+new file mode 100644
+index 0000000..02e3ffe
+--- /dev/null
++++ b/player-adaptativo/player-adaptativo/tests/player.integracao-api.test.js
+@@ -0,0 +1,280 @@
++/**
++ * Testes de integração player ↔ API (backend FastAPI).
++ *
++ * Cobre a lógica acrescentada em js/player.js para a "conversa" com o back:
++ *
++ *  1. resolveMediaUrl — hls_url relativo ("/videos/...") precisa virar
++ *     absoluto contra a origem da API, senão o navegador resolve contra a
++ *     origem do front (Live Server) e o vídeo dá 404.
++ *  2. Auto-seleção — quando o backend responde com vídeos reais (trending /
++ *     relacionados), o primeiro com stream pronto entra em reprodução no
++ *     lugar do master.m3u8 de demonstração (que não existe no repo).
++ *  3. PLAYER_CONFIG.HLS_URL explícito vence a auto-seleção.
++ *  4. Clique em card (evento "video-selected") toca a URL resolvida,
++ *     registra a visualização (POST /watch) e recarrega os relacionados.
++ *
++ * Como no bootstrap test, a página real (index.html) é carregada no jsdom.
++ * O HLS.js é um dublê que grava as URLs passadas a loadSource(); o fetch é
++ * dublado por rota — nenhum teste faz rede de verdade.
++ */
++import { jest } from "@jest/globals";
++import { readFileSync } from "node:fs";
++import { fileURLToPath } from "node:url";
++
++const indexHtml = readFileSync(
++  fileURLToPath(new URL("../index.html", import.meta.url)),
++  "utf8"
++);
++
++// Mesmo valor padrão de js/api.js quando não há PLAYER_CONFIG (a origem do
++// jsdom é http://localhost, então o fallback localhost:8000 se aplica).
++const API_BASE = "http://localhost:8000";
++
++let urlsCarregadas;
++let instanciasHls;
++
++class FakeHls {
++  constructor() {
++    this.levels = [{ height: 360, bitrate: 464000 }, { height: 720, bitrate: 2600000 }];
++    this.currentLevel = -1;
++    instanciasHls.push(this);
++  }
++
++  loadSource(url) {
++    urlsCarregadas.push(url);
++  }
++
++  attachMedia() {}
++  on() {}
++  destroy() {}
++}
++
++FakeHls.isSupported = () => true;
++FakeHls.Events = {
++  MANIFEST_PARSED: "hlsManifestParsed",
++  FRAG_BUFFERED: "hlsFragBuffered",
++  LEVEL_SWITCHED: "hlsLevelSwitched",
++  ERROR: "hlsError",
++};
++FakeHls.ErrorTypes = { NETWORK_ERROR: "networkError", MEDIA_ERROR: "mediaError" };
++FakeHls.ErrorDetails = { BUFFER_STALLED_ERROR: "bufferStalledError" };
++
++/** Dubla o fetch por trecho de URL; rotas ausentes devolvem 404. */
++function mockarFetch(rotas) {
++  global.fetch = jest.fn(async (url) => {
++    for (const [trecho, corpo] of Object.entries(rotas)) {
++      if (String(url).includes(trecho)) {
++        return { ok: true, status: 200, json: async () => corpo };
++      }
++    }
++    return { ok: false, status: 404, json: async () => ({}) };
++  });
++  return global.fetch;
++}
++
++/** Sobe a página real e importa o player.js fresco (módulo com side-effects). */
++async function subirPlayer() {
++  jest.resetModules();
++
++  const pagina = new DOMParser().parseFromString(indexHtml, "text/html");
++  document.body.innerHTML = pagina.body.innerHTML;
++
++  global.Hls = FakeHls;
++  window.Hls = FakeHls;
++
++  await import("../js/player.js");
++
++  // Espera a cadeia de promises do catálogo (fetch → render → auto-seleção).
++  for (let i = 0; i < 5; i += 1) {
++    await new Promise((resolver) => setTimeout(resolver, 0));
++  }
++}
++
++function chamadasDeWatch() {
++  return global.fetch.mock.calls.filter(
++    ([url, options]) => String(url).includes("/watch") && options?.method === "POST"
++  );
++}
++
++const VIDEO_TRENDING = {
++  video_id: "v-his",
++  titulo: "História do Brasil — colônia",
++  tags: ["história", "brasil"],
++  categoria: "História",
++  autor: "Pedro",
++  status: "completed",
++  views: 5,
++};
++
++beforeEach(() => {
++  urlsCarregadas = [];
++  instanciasHls = [];
++  delete window.PLAYER_CONFIG;
++  jest.spyOn(console, "info").mockImplementation(() => {});
++  jest.spyOn(console, "error").mockImplementation(() => {});
++});
++
++afterEach(() => {
++  jest.restoreAllMocks();
++  document.body.innerHTML = "";
++  delete window.PLAYER_CONFIG;
++});
++
++describe("player.js — auto-seleção com o catálogo da API", () => {
++  test("toca o primeiro vídeo real do trending (hls_url absoluto)", async () => {
++    mockarFetch({
++      "/trending": {
++        trending: [{ ...VIDEO_TRENDING, hls_url: `${API_BASE}/videos/v-his/master.m3u8`,
++                     thumbnail_url: `${API_BASE}/videos/v-his/thumbnail.jpg` }],
++      },
++      "/relacionados": { relacionados: [] },
++      "/watch": { registrado: true, views: 6 },
++    });
++
++    await subirPlayer();
++
++    expect(urlsCarregadas.at(-1)).toBe(`${API_BASE}/videos/v-his/master.m3u8`);
++  });
++
++  test("atualiza o título da página com os metadados reais", async () => {
++    mockarFetch({
++      "/trending": {
++        trending: [{ ...VIDEO_TRENDING, hls_url: `${API_BASE}/videos/v-his/master.m3u8`, views: 5 }],
++      },
++      "/relacionados": { relacionados: [] },
++      "/watch": { registrado: true },
++    });
++
++    await subirPlayer();
++
++    expect(document.querySelector("#videoTitle").textContent).toBe(
++      "História do Brasil — colônia"
++    );
++    expect(document.querySelector("#views").textContent).toBe("5 visualizações");
++  });
++
++  test("registra a visualização do vídeo auto-selecionado (POST /watch)", async () => {
++    mockarFetch({
++      "/trending": {
++        trending: [{ ...VIDEO_TRENDING, hls_url: `${API_BASE}/videos/v-his/master.m3u8` }],
++      },
++      "/relacionados": { relacionados: [] },
++      "/watch": { registrado: true },
++    });
++
++    await subirPlayer();
++
++    const assistidos = chamadasDeWatch().map(([, options]) => JSON.parse(options.body).video_id);
++    expect(assistidos).toContain("v-his");
++  });
++
++  test("hls_url relativo da API é prefixado com a origem do backend", async () => {
++    // Cenário de segurança: API devolve caminho relativo (versões antigas).
++    // Sem o prefixo, o navegador resolveria contra a origem do FRONT → 404.
++    mockarFetch({
++      "/trending": {
++        trending: [{ ...VIDEO_TRENDING, hls_url: "/videos/v-his/master.m3u8" }],
++      },
++      "/relacionados": { relacionados: [] },
++      "/watch": { registrado: true },
++    });
++
++    await subirPlayer();
++
++    expect(urlsCarregadas.at(-1)).toBe(`${API_BASE}/videos/v-his/master.m3u8`);
++  });
++
++  test("usa um relacionado quando o trending vem vazio", async () => {
++    mockarFetch({
++      "/trending": { trending: [], motivo: "nenhuma visualização registrada ainda" },
++      "/relacionados": {
++        video_id: "demo-video",
++        relacionados: [{ ...VIDEO_TRENDING, video_id: "v-rel",
++                         hls_url: `${API_BASE}/videos/v-rel/master.m3u8` }],
++      },
++      "/watch": { registrado: true },
++    });
++
++    await subirPlayer();
++
++    expect(urlsCarregadas.at(-1)).toBe(`${API_BASE}/videos/v-rel/master.m3u8`);
++  });
++
++  test("PLAYER_CONFIG.HLS_URL explícito vence a auto-seleção", async () => {
++    window.PLAYER_CONFIG = { HLS_URL: "./videos/meu-stream.m3u8" };
++    mockarFetch({
++      "/trending": {
++        trending: [{ ...VIDEO_TRENDING, hls_url: `${API_BASE}/videos/v-his/master.m3u8` }],
++      },
++      "/relacionados": { relacionados: [] },
++      "/watch": { registrado: true },
++    });
++
++    await subirPlayer();
++
++    expect(urlsCarregadas).toEqual(["./videos/meu-stream.m3u8"]);
++  });
++
++  test("backend fora do ar mantém o comportamento de demonstração", async () => {
++    global.fetch = jest.fn(async () => {
++      throw new TypeError("Failed to fetch");
++    });
++
++    await subirPlayer();
++
++    // Nenhuma URL da API foi carregada; só a tentativa com o demo local.
++    expect(urlsCarregadas).toEqual(["./videos/master.m3u8"]);
++    expect(document.querySelectorAll("#sidebarVideos article.video-card").length)
++      .toBeGreaterThan(0);
++  });
++});
++
++describe("player.js — clique em card (video-selected)", () => {
++  test("toca a URL resolvida, registra o watch e busca os relacionados do novo vídeo", async () => {
++    const fetchMock = mockarFetch({
++      "/watch": { registrado: true },
++      "/relacionados": { relacionados: [] },
++      "/trending": { trending: [] },
++    });
++
++    await subirPlayer();
++
++    window.dispatchEvent(new CustomEvent("video-selected", {
++      detail: {
++        id: "v-clicado",
++        title: "Aula clicada",
++        hlsUrl: "/videos/v-clicado/master.m3u8",
++        views: "3 visualizações",
++      },
++    }));
++
++    await new Promise((resolver) => setTimeout(resolver, 0));
++    await new Promise((resolver) => setTimeout(resolver, 0));
++
++    expect(urlsCarregadas.at(-1)).toBe(`${API_BASE}/videos/v-clicado/master.m3u8`);
++    expect(document.querySelector("#videoTitle").textContent).toBe("Aula clicada");
++
++    const assistidos = chamadasDeWatch().map(([, options]) => JSON.parse(options.body).video_id);
++    expect(assistidos).toContain("v-clicado");
++
++    const relacionadosBuscados = fetchMock.mock.calls.some(([url]) =>
++      String(url).includes("/videos/v-clicado/relacionados")
++    );
++    expect(relacionadosBuscados).toBe(true);
++  });
++
++  test("card de demonstração (sem hlsUrl) não quebra o player", async () => {
++    mockarFetch({ "/watch": { registrado: true } });
++
++    await subirPlayer();
++    const antes = urlsCarregadas.length;
++
++    window.dispatchEvent(new CustomEvent("video-selected", {
++      detail: { id: "demo-java", title: "Introdução à Programação Java" },
++    }));
++
++    await new Promise((resolver) => setTimeout(resolver, 0));
++
++    expect(urlsCarregadas.length).toBe(antes);
++  });
++});
+diff --git a/scripts/demo_completo.py b/scripts/demo_completo.py
+new file mode 100644
+index 0000000..1e3bf85
+--- /dev/null
++++ b/scripts/demo_completo.py
+@@ -0,0 +1,177 @@
++#!/usr/bin/env python3
++"""
++Demo de ponta a ponta: a "conversa" completa entre backend e frontend.
++
++O que este script faz (tudo via HTTP, como o navegador faria):
++    1. Gera vídeos de teste com FFmpeg (sintéticos, poucos segundos).
++    2. POST /upload             — envia cada vídeo com título, autor e tags.
++    3. GET  /status/{video_id}  — acompanha pending → processing → completed
++                                  (o worker Celery transcodifica em HLS).
++    4. POST /watch              — registra visualizações (alimenta o trending).
++    5. GET  /trending           — confere que os vídeos apareceram no ranking.
++    6. GET  /videos/{id}/relacionados — confere a recomendação por tags.
++    7. Imprime a URL do player:  http://localhost:8000/player/
++
++Pré-requisitos (veja o README):
++    * API no ar:        uvicorn app.main:app --reload
++    * Redis no ar:      docker compose up -d redis   (ou redis-server)
++    * Worker no ar:     celery -A app.queue.celery_app worker --loglevel=info --pool=solo
++    * FFmpeg no PATH.
++
++Uso:
++    python scripts/demo_completo.py
++    python scripts/demo_completo.py --base-url http://localhost:8000 --duracao 6
++    python scripts/demo_completo.py --quantidade 1
++"""
++from __future__ import annotations
++
++import argparse
++import subprocess
++import sys
++import tempfile
++import time
++from pathlib import Path
++
++try:
++    import httpx
++except ImportError:  # pragma: no cover
++    sys.exit("httpx não instalado. Rode: pip install -r requirements.txt")
++
++# Catálogo da demo: tags pensadas para gerar relacionados interessantes
++# (matemática cruza com frações/geometria; história cruza com brasil).
++PRESETS = [
++    {
++        "titulo": "Frações — introdução",
++        "autor": "Rafael",
++        "descricao": "Aula demo sobre frações (gerada por scripts/demo_completo.py).",
++        "tags": "matemática, frações, educação",
++        "categoria": "Matemática",
++    },
++    {
++        "titulo": "Geometria básica",
++        "autor": "Gustavo",
++        "descricao": "Aula demo sobre geometria (gerada por scripts/demo_completo.py).",
++        "tags": "matemática, geometria, educação",
++        "categoria": "Matemática",
++    },
++    {
++        "titulo": "História do Brasil — colônia",
++        "autor": "Pedro",
++        "descricao": "Aula demo de história (gerada por scripts/demo_completo.py).",
++        "tags": "história, brasil, educação",
++        "categoria": "História",
++    },
++]
++
++
++def gerar_video_teste(destino: Path, duracao: int) -> Path:
++    """Vídeo sintético via FFmpeg (testsrc2 + seno), suficiente para HLS."""
++    comando = [
++        "ffmpeg", "-y", "-hide_banner", "-loglevel", "error",
++        "-f", "lavfi", "-i", f"testsrc2=size=640x360:rate=25:duration={duracao}",
++        "-f", "lavfi", "-i", f"sine=frequency=440:sample_rate=44100:duration={duracao}",
++        "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p",
++        "-c:a", "aac", "-b:a", "96k", "-shortest",
++        str(destino),
++    ]
++    subprocess.run(comando, check=True)
++    return destino
++
++
++def fazer_upload(cliente: httpx.Client, preset: dict, arquivo: Path) -> dict:
++    with arquivo.open("rb") as fh:
++        resposta = cliente.post(
++            "/upload",
++            files={"file": (f"{arquivo.stem}.mp4", fh, "video/mp4")},
++            data=preset,
++            timeout=60,
++        )
++    resposta.raise_for_status()
++    return resposta.json()
++
++
++def aguardar_processamento(cliente: httpx.Client, video_id: str,
++                           timeout: int = 600) -> dict:
++    """Faz polling de /status até completed/failed (o worker transcodifica)."""
++    inicio = time.time()
++    ultimo = None
++    while time.time() - inicio < timeout:
++        resposta = cliente.get(f"/status/{video_id}", timeout=10)
++        if resposta.status_code == 200:
++            status = resposta.json()
++            if status.get("status") != ultimo:
++                ultimo = status.get("status")
++                print(f"    status: {ultimo}")
++            if ultimo in {"completed", "failed"}:
++                return status
++        time.sleep(2)
++    raise TimeoutError(f"vídeo {video_id} não terminou em {timeout}s")
++
++
++def main() -> int:
++    parser = argparse.ArgumentParser(description=__doc__)
++    parser.add_argument("--base-url", default="http://localhost:8000")
++    parser.add_argument("--duracao", type=int, default=6,
++                        help="duração (s) de cada vídeo de teste (padrão: 6)")
++    parser.add_argument("--quantidade", type=int, default=len(PRESETS),
++                        help=f"quantos vídeos enviar (1 a {len(PRESETS)})")
++    args = parser.parse_args()
++
++    quantidade = max(1, min(args.quantidade, len(PRESETS)))
++    cliente = httpx.Client(base_url=args.base_url)
++
++    print(f"== Demo back ↔ front em {args.base_url} ==")
++    try:
++        saude = cliente.get("/", timeout=5).json()
++        print(f"API respondeu: {saude.get('status')}")
++    except Exception as exc:
++        sys.exit(
++            f"API fora do ar em {args.base_url}: {exc}\n"
++            "Suba primeiro: uvicorn app.main:app  (veja o README)"
++        )
++
++    enviados = []
++    with tempfile.TemporaryDirectory() as tmp:
++        for indice, preset in enumerate(PRESETS[:quantidade]):
++            print(f"\n[1/3] Gerando e enviando: {preset['titulo']}")
++            arquivo = gerar_video_teste(Path(tmp) / f"demo_{indice}.mp4", args.duracao)
++            corpo = fazer_upload(cliente, preset, arquivo)
++            print(f"    video_id: {corpo['video_id']}  fila: {corpo.get('fila')}")
++            enviados.append((preset, corpo))
++
++        for preset, corpo in enviados:
++            print(f"\n[2/3] Acompanhando processamento: {preset['titulo']}")
++            status = aguardar_processamento(cliente, corpo["video_id"])
++            if status.get("status") != "completed":
++                print(f"    FALHOU: {status}")
++                return 1
++
++        print("\n[3/3] Registrando visualizações e consultando a API")
++        for peso, (preset, corpo) in enumerate(enviados, start=3):
++            for _ in range(peso):  # pesos diferentes para o ranking fazer sentido
++                cliente.post("/watch", json={
++                    "video_id": corpo["video_id"], "user_id": "demo-user",
++                }, timeout=10)
++
++    trending = cliente.get("/trending", timeout=10).json().get("trending", [])
++    print("\n/trending:")
++    for item in trending:
++        print(f"    {item['views']:>3} views — {item['titulo']}  ({item['hls_url']})")
++
++    primeiro_id = enviados[0][1]["video_id"]
++    relacionados = cliente.get(
++        f"/videos/{primeiro_id}/relacionados", timeout=10
++    ).json().get("relacionados", [])
++    print(f"\n/videos/{primeiro_id[:8]}.../relacionados:")
++    for item in relacionados:
++        print(f"    score {item['score']} — {item['titulo']}")
++
++    print("\n== Tudo certo! Abra o player: ==")
++    print(f"    {args.base_url}/player/")
++    print("O player vai carregar o catálogo real (em alta + relacionados) e")
++    print("tocar o primeiro vídeo transcodificado automaticamente.")
++    return 0
++
++
++if __name__ == "__main__":
++    sys.exit(main())
+-- 
+2.39.5
+
+
+From 6e3ccfcf9395986c604c645dff697397003e6d78 Mon Sep 17 00:00:00 2001
+From: Integracao <integracao@local>
+Date: Thu, 24 Sep 2026 21:25:26 +0000
+Subject: [PATCH 2/3] fix(integracao): ancora uploads/videos/data/player na
+ raiz do repo
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Antes, VIDEOS_DIR/PLAYER_DIR/UPLOAD_DIR/LOCAL_DB_PATH eram relativos ao
+diretorio atual do terminal: iniciar o uvicorn (ou o worker) fora da raiz
+do projeto fazia o mount /player nao existir — o navegador recebia
+{'detail': 'Not Found'} ao abrir /player/. Agora os padroes sao derivados
+do proprio arquivo (__file__), entao API e worker concordam nos caminhos
+independentemente do cwd; variaveis de ambiente continuam tendo prioridade.
+---
+ app/database/local_store.py |  7 +++++--
+ app/main.py                 | 10 ++++++++--
+ app/transcoding/config.py   | 11 +++++++----
+ app/upload/router.py        |  6 +++++-
+ 4 files changed, 25 insertions(+), 9 deletions(-)
+
+diff --git a/app/database/local_store.py b/app/database/local_store.py
+index d9c2ae7..7fc9ecf 100644
+--- a/app/database/local_store.py
++++ b/app/database/local_store.py
+@@ -31,13 +31,16 @@ import uuid
+ from datetime import datetime, timezone
+ from pathlib import Path
+ 
+-CAMINHO_PADRAO = "data/videos.json"
++# Raiz do repositório: API e worker Celery precisam ler/escrever o MESMO
++# banco mesmo quando iniciados de diretórios diferentes.
++RAIZ_PROJETO = Path(__file__).resolve().parents[2]
++CAMINHO_PADRAO = RAIZ_PROJETO / "data" / "videos.json"
+ 
+ _lock = threading.Lock()
+ 
+ 
+ def caminho_do_banco() -> Path:
+-    return Path(os.getenv("LOCAL_DB_PATH", CAMINHO_PADRAO))
++    return Path(os.getenv("LOCAL_DB_PATH", str(CAMINHO_PADRAO)))
+ 
+ 
+ def _ler() -> list[dict]:
+diff --git a/app/main.py b/app/main.py
+index 0f001c5..a6d4485 100644
+--- a/app/main.py
++++ b/app/main.py
+@@ -35,8 +35,14 @@ mimetypes.add_type("application/vnd.apple.mpegurl", ".m3u8")
+ mimetypes.add_type("video/mp2t", ".ts")
+ 
+ # Mesmas variáveis usadas pelos módulos de upload/transcodificação.
+-VIDEOS_DIR = Path(os.getenv("VIDEOS_DIR", "videos"))
+-PLAYER_DIR = Path(os.getenv("PLAYER_DIR", "player-adaptativo/player-adaptativo"))
++# Padrão ancorado na RAIZ DO REPOSITÓRIO (e não no diretório atual do
++# terminal): assim `uvicorn app.main:app` funciona de qualquer cwd — antes,
++# iniciar fora da raiz fazia o mount do /player não existir (404 "Not Found").
++RAIZ_PROJETO = Path(__file__).resolve().parent.parent
++VIDEOS_DIR = Path(os.getenv("VIDEOS_DIR", RAIZ_PROJETO / "videos"))
++PLAYER_DIR = Path(
++    os.getenv("PLAYER_DIR", RAIZ_PROJETO / "player-adaptativo" / "player-adaptativo")
++)
+ 
+ app = FastAPI(
+     title="Plataforma de Vídeo Educacional",
+diff --git a/app/transcoding/config.py b/app/transcoding/config.py
+index 203f532..f5e6784 100644
+--- a/app/transcoding/config.py
++++ b/app/transcoding/config.py
+@@ -77,10 +77,13 @@ def ladder() -> list[Resolucao]:
+ # ---------------------------------------------------------------------------
+ # Caminhos e parâmetros de saída
+ # ---------------------------------------------------------------------------
+-# UPLOAD_DIR: mesmo nome de variável que o app/upload/router.py do Rafael usa,
+-# para os dois módulos olharem a mesma pasta sem configurar nada duas vezes.
+-BASE_UPLOADS = Path(os.getenv("UPLOAD_DIR", "uploads"))    # entrada  (contrato com Rafael)
+-BASE_VIDEOS = Path(os.getenv("VIDEOS_DIR", "videos"))      # saída    (contrato com Pedro)
++# Padrões ancorados na raiz do repositório (derivada deste arquivo), para que
++# worker Celery e API escrevam/leiam os MESMOS caminhos mesmo quando um deles
++# é iniciado de outro diretório. UPLOAD_DIR usa o mesmo nome de variável do
++# app/upload/router.py do Rafael, sem configurar nada duas vezes.
++RAIZ_PROJETO = Path(__file__).resolve().parents[2]
++BASE_UPLOADS = Path(os.getenv("UPLOAD_DIR", RAIZ_PROJETO / "uploads"))  # entrada  (contrato com Rafael)
++BASE_VIDEOS = Path(os.getenv("VIDEOS_DIR", RAIZ_PROJETO / "videos"))    # saída    (contrato com Pedro)
+ 
+ HLS_SEGMENT_SECONDS = int(os.getenv("HLS_SEGMENT_SECONDS", "4"))
+ FFMPEG_PRESET = os.getenv("FFMPEG_PRESET", "veryfast")
+diff --git a/app/upload/router.py b/app/upload/router.py
+index df67cc0..7398b13 100644
+--- a/app/upload/router.py
++++ b/app/upload/router.py
+@@ -16,7 +16,11 @@ ALLOWED_EXTENSIONS = {".mp4", ".avi", ".mov", ".webm"}
+ # 500MB
+ MAX_SIZE = 500 * 1024 * 1024
+ 
+-UPLOAD_DIR = Path(os.getenv("UPLOAD_DIR", "uploads"))
++# Padrão ancorado na raiz do repositório: o worker Celery procura o original
++# pelo caminho absoluto devolvido aqui, então os dois processos precisam
++# concordar sobre a pasta mesmo com cwd diferentes.
++RAIZ_PROJETO = Path(__file__).resolve().parents[2]
++UPLOAD_DIR = Path(os.getenv("UPLOAD_DIR", RAIZ_PROJETO / "uploads"))
+ 
+ 
+ def parse_tags(tags: str) -> list[str]:
+-- 
+2.39.5
+
+
+From a119f8c964aef4b88ec1872f868adac50bcf58af Mon Sep 17 00:00:00 2001
+From: Integracao <integracao@local>
+Date: Thu, 24 Sep 2026 22:21:57 +0000
+Subject: [PATCH 3/3] feat(player): home estilo YouTube com catalogo, busca e
+ navegacao para o watch
+
+- backend: GET /catalogo (busca por titulo/tag, ordenado por views) e
+  GET /catalogo/{video_id} para a watch page abrir com ?video={id}
+- backend: /trending e a contagem de views nao quebram mais sem Redis
+  (ConnectionError virava 500; agora 200 com lista vazia + motivo)
+- front: home.html + js/home.js (grade de cards, busca com debounce,
+  estado vazio explicando como publicar videos com scripts/demo_completo.py)
+- front: watch page le ?video={id} e toca exatamente esse video; sem ele,
+  auto-seleciona o primeiro do catalogo como antes
+- front: sem nenhum video transcodificado, o player mostra uma mensagem
+  util em vez de spinner/loop de retry num 404; initialize() protegido
+  com try/catch que transforma erro de JS em mensagem visivel
+- testes: 283 pytest (+10) e 196 Jest (+9); fixture 'banco' agora usa
+  deepcopy (teste antigo mutava o CATALOGO compartilhado e vazava estado)
+---
+ README.md                                     |   4 +-
+ app/recommendations/router.py                 |  71 +++++++-
+ app/recommendations/tests/test_router.py      | 102 ++++++++++-
+ .../player-adaptativo/css/player.css          |  70 ++++++++
+ player-adaptativo/player-adaptativo/home.html |  47 +++++
+ .../player-adaptativo/index.html              |   2 +-
+ player-adaptativo/player-adaptativo/js/api.js |   9 +
+ .../player-adaptativo/js/catalog.js           |  26 ++-
+ .../player-adaptativo/js/home.js              |  89 ++++++++++
+ .../player-adaptativo/js/player.js            |  52 +++++-
+ .../player-adaptativo/js/recommendations.js   |  12 +-
+ .../player-adaptativo/tests/home.test.js      | 162 ++++++++++++++++++
+ .../tests/player.video-param.test.js          | 112 ++++++++++++
+ scripts/demo_completo.py                      |   3 +-
+ 14 files changed, 742 insertions(+), 19 deletions(-)
+ create mode 100644 player-adaptativo/player-adaptativo/home.html
+ create mode 100644 player-adaptativo/player-adaptativo/js/home.js
+ create mode 100644 player-adaptativo/player-adaptativo/tests/home.test.js
+ create mode 100644 player-adaptativo/player-adaptativo/tests/player.video-param.test.js
+
+diff --git a/README.md b/README.md
+index 3b6c53f..49895ef 100644
+--- a/README.md
++++ b/README.md
+@@ -164,7 +164,7 @@ Com API + Redis + worker Celery rodando (passos acima), em outro terminal:
+ python scripts/demo_completo.py
+ ```
+ 
+-O script gera vídeos de teste com FFmpeg, faz o upload via `POST /upload`, acompanha a transcodificação pelo `GET /status/{video_id}`, registra visualizações e mostra o `/trending` e os `/videos/{id}/relacionados` respondendo com os vídeos reais. No fim, é só abrir **http://localhost:8000/player/** — o player carrega o catálogo da API (seção "Vídeos relacionados" e barra lateral "Próximos vídeos") e **dá play automaticamente no primeiro vídeo transcodificado**.
++O script gera vídeos de teste com FFmpeg, faz o upload via `POST /upload`, acompanha a transcodificação pelo `GET /status/{video_id}`, registra visualizações e mostra o `/trending` e os `/videos/{id}/relacionados` respondendo com os vídeos reais. No fim, é só abrir a **home estilo YouTube** em **http://localhost:8000/player/home.html**: a grade lista os vídeos transcodificados (com busca por título/tag no topo) e cada card abre a página de watch já tocando o vídeo escolhido (`index.html?video={id}`). Abrir direto **http://localhost:8000/player/** também funciona: o player dá play automaticamente no primeiro vídeo do catálogo.
+ 
+ ### Rodando o frontend separado (Live Server, http.server, etc.)
+ 
+@@ -184,7 +184,7 @@ POST /upload ──► grava arquivo + metadados (Supabase ou JSON local)
+                      └─► transcodificar_video (FFmpeg → HLS em videos/{id}/)
+                              └─► status completed no Redis E no banco
+ GET /status/{id} ──► pending → processing → completed   (polling do front)
+-GET /trending, GET /videos/{id}/relacionados ──► cards do player (hls_url absoluto)
++GET /catalogo, /trending, /videos/{id}/relacionados ──► home + cards do player
+ GET /videos/{id}/master.m3u8 ──► HLS.js toca o vídeo adaptativo
+ POST /watch ──► alimenta o ranking e as recomendações do usuário
+ ```
+diff --git a/app/recommendations/router.py b/app/recommendations/router.py
+index 64bbce5..1c6231e 100644
+--- a/app/recommendations/router.py
++++ b/app/recommendations/router.py
+@@ -72,6 +72,20 @@ def _executar_no_banco(operacao, *args, **kwargs):
+         ) from exc
+ 
+ 
++def _views_seguras(video_id: str) -> int:
++    """Contagem de views que nunca derruba a rota.
++
++    Sem Redis (dev no Windows sem Docker, por exemplo), o contador de
++    visualizações está indisponível — o catálogo continua vindo do banco,
++    só que com 0 views, em vez de virar um erro 500 na cara do player.
++    """
++    try:
++        return views_store.contar_visualizacoes(video_id)
++    except Exception as exc:
++        logger.warning("Contador de visualizações indisponível: %s", exc)
++        return 0
++
++
+ def _url_absoluta(request: Request | None, caminho: str) -> str:
+     """Transforma '/videos/x/master.m3u8' em URL absoluta usando a origem da
+     requisição (ex: 'http://localhost:8000/videos/x/master.m3u8').
+@@ -94,7 +108,7 @@ def _enriquecer(video: dict, score: float | None = None,
+     resposta = {
+         **video,
+         "tags": normalizar_tags(video.get("tags")),
+-        "views": views_store.contar_visualizacoes(video_id) if video_id else 0,
++        "views": _views_seguras(video_id) if video_id else 0,
+         "hls_url": (
+             _url_absoluta(request, f"/videos/{video_id}/master.m3u8")
+             if video_id else None
+@@ -203,7 +217,14 @@ def recomendacoes_personalizadas(
+ @router.get("/trending")
+ def trending(request: Request, limite: int = Query(default=10, ge=1, le=50)):
+     """Mais assistidos, segundo o contador em Redis."""
+-    ranking = views_store.mais_assistidos(limite)
++    try:
++        ranking = views_store.mais_assistidos(limite)
++    except Exception as exc:  # Redis fora do ar não pode derrubar o player
++        logger.warning("Contador de visualizações indisponível: %s", exc)
++        return {
++            "trending": [],
++            "motivo": "contador de visualizações indisponível (Redis fora do ar?)",
++        }
+ 
+     if not ranking:
+         return {"trending": [], "motivo": "nenhuma visualização registrada ainda"}
+@@ -222,6 +243,52 @@ def trending(request: Request, limite: int = Query(default=10, ge=1, le=50)):
+     return {"trending": videos}
+ 
+ 
++# ---------------------------------------------------------------------------
++# GET /catalogo e GET /catalogo/{video_id} — usados pela home do player
++# ---------------------------------------------------------------------------
++
++@router.get("/catalogo")
++def catalogo(
++    request: Request,
++    q: str = Query(default="", max_length=100, description="Busca por título ou tag"),
++    limite: int = Query(default=50, ge=1, le=200),
++):
++    """Catálogo de vídeos prontos para assistir (status='completed').
++
++    É o endpoint que alimenta a home do player (grade estilo YouTube) e a
++    busca do topo da página. Sem Redis o catálogo continua funcionando —
++    só as contagens de views ficam em zero.
++    """
++    videos = _catalogo_pronto()
++
++    termo = q.strip().lower()
++    if termo:
++        videos = [
++            video for video in videos
++            if termo in str(video.get("titulo", "")).lower()
++            or any(termo in tag for tag in normalizar_tags(video.get("tags")))
++        ]
++
++    videos.sort(
++        key=lambda video: (-_views_seguras(video.get("video_id")),
++                           str(video.get("titulo", "")))
++    )
++
++    return {
++        "videos": [_enriquecer(video, request=request) for video in videos[:limite]],
++        "total": len(videos),
++    }
++
++
++@router.get("/catalogo/{video_id}")
++def catalogo_detalhe(request: Request, video_id: str):
++    """Metadado enriquecido de UM vídeo (a home navega para ?video={id})."""
++    video = _executar_no_banco(buscar_video, video_id)
++    if video is None:
++        raise HTTPException(status_code=404, detail="video_id não encontrado")
++    return _enriquecer(video, request=request)
++
++
+ # ---------------------------------------------------------------------------
+ # POST /watch
+ # ---------------------------------------------------------------------------
+diff --git a/app/recommendations/tests/test_router.py b/app/recommendations/tests/test_router.py
+index af316db..b092b26 100644
+--- a/app/recommendations/tests/test_router.py
++++ b/app/recommendations/tests/test_router.py
+@@ -12,6 +12,8 @@ a rota: status HTTP, formato da resposta, ordenação, validação de parâmetro
+ """
+ from __future__ import annotations
+ 
++import copy
++
+ import pytest
+ from fastapi.testclient import TestClient
+ 
+@@ -74,9 +76,17 @@ CATALOGO = [
+ 
+ @pytest.fixture
+ def banco(monkeypatch):
+-    """Dubla o acesso ao Supabase com um catálogo fixo."""
++    """Dubla o acesso ao Supabase com um catálogo fixo.
++
++    Cópia profunda de propósito: vários testes MUTAM as tags dos vídeos para
++    exercitar normalização (string, caixa alta...). Sem o deepcopy, essas
++    mutações vazavam pelo CATALOGO compartilhado e contaminavam os testes
++    seguintes (ex.: v-geo ficava com a tag "frações" para o resto da suíte).
++    """
+     estado = {
+-        "videos": {item["video_id"]: item for item in CATALOGO},
++        "videos": {
++            item["video_id"]: copy.deepcopy(item) for item in CATALOGO
++        },
+         "erro": None,
+     }
+ 
+@@ -431,3 +441,91 @@ def test_fluxo_completo_watch_depois_trending(api, views):
+     resposta = client.get("/trending")
+ 
+     assert resposta.json()["trending"][0]["video_id"] == "v-fra"
++
++
++# ---------------------------------------------------------------------------
++# GET /catalogo e /catalogo/{video_id} — home do player
++# ---------------------------------------------------------------------------
++
++def test_catalogo_lista_os_videos_prontos(api):
++    resposta = client.get("/catalogo")
++
++    assert resposta.status_code == 200
++    ids = {item["video_id"] for item in resposta.json()["videos"]}
++    assert ids == {"v-fra", "v-geo", "v-his", "v-quim"}
++
++
++def test_catalogo_exclui_videos_nao_concluidos(api, banco):
++    banco["videos"]["v-pend"] = video("v-pend", "Pendente", ["matemática"], status="pending")
++
++    ids = {item["video_id"] for item in client.get("/catalogo").json()["videos"]}
++
++    assert "v-pend" not in ids
++
++
++def test_catalogo_busca_por_titulo(api):
++    ids = [item["video_id"] for item in client.get("/catalogo?q=fra").json()["videos"]]
++
++    assert ids == ["v-fra"]
++
++
++def test_catalogo_busca_por_tag(api):
++    ids = [item["video_id"] for item in client.get("/catalogo?q=geometria").json()["videos"]]
++
++    assert ids == ["v-geo"]
++
++
++def test_catalogo_busca_sem_resultado_devolve_lista_vazia(api):
++    corpo = client.get("/catalogo?q=xyz").json()
++
++    assert corpo["videos"] == []
++    assert corpo["total"] == 0
++
++
++def test_catalogo_ordena_pelos_mais_assistidos(api, views):
++    views.contagens["v-quim"] = 90
++
++    primeiro = client.get("/catalogo").json()["videos"][0]
++
++    assert primeiro["video_id"] == "v-quim"
++
++
++def test_catalogo_detalhe_enriquece_com_urls_absolutas(api):
++    item = client.get("/catalogo/v-fra").json()
++
++    assert item["titulo"] == "Frações"
++    assert item["hls_url"] == "http://testserver/videos/v-fra/master.m3u8"
++    assert item["thumbnail_url"] == "http://testserver/videos/v-fra/thumbnail.jpg"
++
++
++def test_catalogo_detalhe_inexistente_retorna_404(api):
++    assert client.get("/catalogo/fantasma").status_code == 404
++
++
++def test_trending_com_redis_fora_devolve_lista_vazia_sem_500(api, views):
++    """Contador indisponível não pode derrubar a home nem o player."""
++    import redis as modulo_redis
++
++    def _mais_assistidos_fora(limite=10):
++        raise modulo_redis.ConnectionError("Connection refused")
++
++    views.mais_assistidos = _mais_assistidos_fora
++
++    resposta = client.get("/trending")
++
++    assert resposta.status_code == 200
++    assert resposta.json()["trending"] == []
++    assert "indisponível" in resposta.json()["motivo"]
++
++
++def test_catalogo_nao_quebra_sem_o_contador_de_views(api, views):
++    def _boom(video_id):
++        raise ConnectionError("redis fora")
++
++    views.contar_visualizacoes = _boom
++
++    resposta = client.get("/catalogo")
++
++    assert resposta.status_code == 200
++    assert len(resposta.json()["videos"]) == 4
++    assert all(item["views"] == 0 for item in resposta.json()["videos"])
+diff --git a/player-adaptativo/player-adaptativo/css/player.css b/player-adaptativo/player-adaptativo/css/player.css
+index 3c95fb5..ed5d14a 100644
+--- a/player-adaptativo/player-adaptativo/css/player.css
++++ b/player-adaptativo/player-adaptativo/css/player.css
+@@ -497,3 +497,73 @@ button {
+     font-size: 11px;
+   }
+ }
++
++/* ---------------------------------------------------------------------------
++   Home (home.html) — grade estilo YouTube reutilizando .video-grid/.video-card
++   --------------------------------------------------------------------------- */
++.home-page {
++  padding-bottom: 56px;
++}
++
++.home-title-row {
++  align-items: baseline;
++  gap: 10px;
++}
++
++.home-count {
++  color: var(--muted);
++  font-size: 13px;
++}
++
++.home-grid {
++  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
++  gap: 22px 16px;
++}
++
++a.home-card {
++  display: block;
++  color: inherit;
++  text-decoration: none;
++  border-radius: 10px;
++  transition: transform .15s ease, background .15s ease;
++}
++
++a.home-card:hover {
++  transform: translateY(-2px);
++  background: var(--surface);
++}
++
++a.home-card .card-content {
++  padding: 8px 4px 4px;
++}
++
++.empty-state {
++  margin-top: 28px;
++  padding: 22px 24px;
++  border: 1px dashed var(--border);
++  border-radius: 12px;
++  background: var(--surface);
++  color: var(--muted);
++  line-height: 1.6;
++}
++
++.empty-state strong {
++  color: var(--text);
++  font-size: 15px;
++}
++
++.empty-state code {
++  background: var(--surface-2);
++  border: 1px solid var(--border);
++  border-radius: 6px;
++  padding: 2px 7px;
++  color: var(--text);
++}
++
++.empty-state.hide-details p {
++  display: none;
++}
++
++.empty-state .empty-hint {
++  font-size: 13px;
++}
+diff --git a/player-adaptativo/player-adaptativo/home.html b/player-adaptativo/player-adaptativo/home.html
+new file mode 100644
+index 0000000..aa3ce64
+--- /dev/null
++++ b/player-adaptativo/player-adaptativo/home.html
+@@ -0,0 +1,47 @@
++<!DOCTYPE html>
++<html lang="pt-BR">
++<head>
++  <meta charset="UTF-8">
++  <meta name="viewport" content="width=device-width, initial-scale=1.0">
++  <meta name="description" content="Catálogo de vídeos educacionais com streaming HLS adaptativo">
++  <title>EduStream — Início</title>
++  <link rel="stylesheet" href="./css/player.css">
++</head>
++<body>
++  <header class="topbar">
++    <a class="brand" href="./home.html" aria-label="EduStream — início">Edu<span>Stream</span></a>
++
++    <form class="search" id="searchForm" role="search">
++      <input id="searchInput" type="search" placeholder="Pesquisar vídeos..." autocomplete="off">
++      <button type="submit" aria-label="Pesquisar">⌕</button>
++    </form>
++
++    <button class="icon-button" id="profileButton" type="button" aria-label="Perfil">👤</button>
++  </header>
++
++  <main class="page home-page">
++    <div class="section-title-row home-title-row">
++      <h2 id="homeTitle">Catálogo</h2>
++      <span class="home-count" id="homeCount"></span>
++    </div>
++
++    <div class="video-grid home-grid" id="homeGrid"></div>
++
++    <div class="empty-state hidden" id="homeEmpty">
++      <strong>Nenhum vídeo pronto para assistir ainda.</strong>
++      <p>
++        Os vídeos aparecem aqui depois de serem transcodificados pelo backend.
++        Para publicar vídeos de teste agora (API + Redis + worker no ar):
++      </p>
++      <p><code>python scripts/demo_completo.py</code></p>
++      <p class="empty-hint">
++        Se a API estiver fora do ar, suba primeiro: <code>uvicorn app.main:app</code>
++      </p>
++    </div>
++  </main>
++
++  <!-- Configuração da API (origem do backend) — precisa vir antes do módulo. -->
++  <script src="./config.js"></script>
++  <script type="module" src="./js/home.js"></script>
++</body>
++</html>
+diff --git a/player-adaptativo/player-adaptativo/index.html b/player-adaptativo/player-adaptativo/index.html
+index 31fd850..9d15c84 100644
+--- a/player-adaptativo/player-adaptativo/index.html
++++ b/player-adaptativo/player-adaptativo/index.html
+@@ -9,7 +9,7 @@
+ </head>
+ <body>
+   <header class="topbar">
+-    <a class="brand" href="#" aria-label="EduStream">Edu<span>Stream</span></a>
++    <a class="brand" href="./home.html" aria-label="EduStream — ir para o início">Edu<span>Stream</span></a>
+ 
+     <form class="search" id="searchForm" role="search">
+       <input id="searchInput" type="search" placeholder="Pesquisar vídeos..." autocomplete="off">
+diff --git a/player-adaptativo/player-adaptativo/js/api.js b/player-adaptativo/player-adaptativo/js/api.js
+index 8e43b17..2979375 100644
+--- a/player-adaptativo/player-adaptativo/js/api.js
++++ b/player-adaptativo/player-adaptativo/js/api.js
+@@ -32,6 +32,15 @@ export async function getTrending() {
+   return requestJson("/trending");
+ }
+ 
++export async function getCatalogo(termo = "") {
++  const query = termo ? `?q=${encodeURIComponent(termo)}` : "";
++  return requestJson(`/catalogo${query}`);
++}
++
++export async function getVideo(videoId) {
++  return requestJson(`/catalogo/${encodeURIComponent(videoId)}`);
++}
++
+ export async function registerWatch(payload) {
+   return requestJson("/watch", {
+     method: "POST",
+diff --git a/player-adaptativo/player-adaptativo/js/catalog.js b/player-adaptativo/player-adaptativo/js/catalog.js
+index 3a244c0..c85df0c 100644
+--- a/player-adaptativo/player-adaptativo/js/catalog.js
++++ b/player-adaptativo/player-adaptativo/js/catalog.js
+@@ -12,7 +12,7 @@
+  *   É o padrão "enhancement progressivo": renderiza o demo na hora, troca por
+  *   dados reais quando a API responde.
+  */
+-import { getRelatedVideos, getTrending, registerWatch } from "./api.js";
++import { getCatalogo, getRelatedVideos, getTrending, getVideo, registerWatch } from "./api.js";
+ import { renderRecommendations, renderSidebar } from "./recommendations.js";
+ 
+ /**
+@@ -79,6 +79,30 @@ export async function buscarEmAlta() {
+   }
+ }
+ 
++/**
++ * Catálogo completo de vídeos prontos (home estilo YouTube + busca).
++ * Devolve [] se a API falhar — a home mostra o estado vazio explicando o que fazer.
++ */
++export async function buscarCatalogo(termo = "") {
++  try {
++    const corpo = await getCatalogo(termo);
++    return (corpo?.videos ?? []).map(paraCard).filter(Boolean);
++  } catch (error) {
++    console.info("Catálogo indisponível:", error.message);
++    return [];
++  }
++}
++
++/** Um vídeo pelo id (a watch page abre com ?video={id} e busca este metadado). */
++export async function buscarVideoDaApi(videoId) {
++  try {
++    return paraCard(await getVideo(videoId));
++  } catch (error) {
++    console.info(`Vídeo ${videoId} indisponível na API:`, error.message);
++    return null;
++  }
++}
++
+ /**
+  * Registra a visualização (alimenta /trending e /recomendacoes no backend).
+  * Devolve false em vez de lançar: falhar aqui não pode travar a reprodução.
+diff --git a/player-adaptativo/player-adaptativo/js/home.js b/player-adaptativo/player-adaptativo/js/home.js
+new file mode 100644
+index 0000000..8d062bb
+--- /dev/null
++++ b/player-adaptativo/player-adaptativo/js/home.js
+@@ -0,0 +1,89 @@
++/**
++ * Home estilo YouTube (js/home.js).
++ *
++ * Grade com todos os vídeos prontos do catálogo (GET /catalogo), busca no
++ * topo filtrando por título/tag (GET /catalogo?q=...) e navegação para a
++ * página de watch com o vídeo escolhido: index.html?video={id}.
++ *
++ * Resiliência (mesmo padrão do resto do player): se a API estiver fora ou o
++ * catálogo vazio, mostramos um estado vazio explicando como publicar vídeos
++ * (scripts/demo_completo.py) — nunca uma tela quebrada.
++ */
++import { buscarCatalogo } from "./catalog.js";
++import { escapeHtml } from "./recommendations.js";
++
++const elements = {
++  grid: document.querySelector("#homeGrid"),
++  empty: document.querySelector("#homeEmpty"),
++  title: document.querySelector("#homeTitle"),
++  count: document.querySelector("#homeCount"),
++  searchForm: document.querySelector("#searchForm"),
++  searchInput: document.querySelector("#searchInput"),
++};
++
++let debounce = null;
++
++function criarCardHome(video) {
++  const link = document.createElement("a");
++  link.className = "video-card home-card";
++  link.href = `index.html?video=${encodeURIComponent(video.id)}`;
++  link.setAttribute("aria-label", video.title);
++
++  link.innerHTML = `
++    <div class="thumbnail">
++      <img src="${escapeHtml(video.thumbnail || "")}" alt="" loading="lazy">
++      <span class="thumbnail-duration">${escapeHtml(video.duration || "")}</span>
++    </div>
++    <div class="card-content">
++      <h3 class="card-title">${escapeHtml(video.title || "Vídeo sem título")}</h3>
++      <div class="card-meta">${escapeHtml(video.views || "")}</div>
++    </div>
++  `;
++
++  return link;
++}
++
++export function renderHome(container, videos) {
++  container.replaceChildren(...videos.map(criarCardHome));
++}
++
++function mostrarVazio(termo) {
++  const semBusca = !termo;
++  elements.empty.querySelector("strong").textContent = semBusca
++    ? "Nenhum vídeo pronto para assistir ainda."
++    : `Nada encontrado para "${termo}".`;
++  // Em busca sem resultado não faz sentido mostrar o passo a passo de upload.
++  elements.empty.classList.toggle("hide-details", !semBusca);
++  elements.empty.classList.remove("hidden");
++  elements.count.textContent = "";
++}
++
++async function carregar(termo = "") {
++  const videos = await buscarCatalogo(termo);
++
++  elements.title.textContent = termo ? `Resultados para "${termo}"` : "Catálogo";
++
++  if (!videos.length) {
++    elements.grid.replaceChildren();
++    mostrarVazio(termo);
++    return videos;
++  }
++
++  elements.empty.classList.add("hidden");
++  elements.count.textContent =
++    `${videos.length} vídeo${videos.length === 1 ? "" : "s"}`;
++  renderHome(elements.grid, videos);
++  return videos;
++}
++
++elements.searchForm.addEventListener("submit", (event) => {
++  event.preventDefault();
++  carregar(elements.searchInput.value.trim());
++});
++
++elements.searchInput.addEventListener("input", () => {
++  clearTimeout(debounce);
++  debounce = setTimeout(() => carregar(elements.searchInput.value.trim()), 350);
++});
++
++carregar();
+diff --git a/player-adaptativo/player-adaptativo/js/player.js b/player-adaptativo/player-adaptativo/js/player.js
+index 67cc888..5bcdf61 100644
+--- a/player-adaptativo/player-adaptativo/js/player.js
++++ b/player-adaptativo/player-adaptativo/js/player.js
+@@ -5,9 +5,17 @@ import {
+   renderSidebar,
+   DEMO_VIDEOS
+ } from "./recommendations.js";
+-import { atualizarCatalogoDaApi, registrarVisualizacao } from "./catalog.js";
++import {
++  atualizarCatalogoDaApi,
++  buscarVideoDaApi,
++  registrarVisualizacao
++} from "./catalog.js";
+ import { API_BASE_URL } from "./api.js";
+ 
++// index.html?video={id} — é assim que a home (home.html) abre um vídeo.
++const PARAMS = new URLSearchParams(window.location.search);
++const VIDEO_DA_URL = PARAMS.get("video");
++
+ const CONFIG = {
+   // Durante o desenvolvimento, troque por um master.m3u8 real.
+   // Exemplo local:
+@@ -15,7 +23,7 @@ const CONFIG = {
+   HLS_URL: window.PLAYER_CONFIG?.HLS_URL || "./videos/master.m3u8",
+ 
+   // Quando o backend estiver pronto:
+-  VIDEO_ID: window.PLAYER_CONFIG?.VIDEO_ID || "demo-video",
++  VIDEO_ID: window.PLAYER_CONFIG?.VIDEO_ID || VIDEO_DA_URL || "demo-video",
+   USER_ID: window.PLAYER_CONFIG?.USER_ID || "demo-user"
+ };
+ 
+@@ -70,13 +78,39 @@ let qualityManager = null;
+ let controls = null;
+ let retryTimer = null;
+ 
+-initialize();
++try {
++  initialize();
++} catch (error) {
++  // Sem isso, um erro de JS deixava a página com o spinner "Carregando vídeo..."
++  // para sempre e nenhuma dica do que aconteceu (nem nos cards, nem no console).
++  console.error("Falha ao iniciar o player:", error);
++  const mensagem = document.querySelector("#playerErrorMessage");
++  const painel = document.querySelector("#playerError");
++  const loading = document.querySelector("#playerLoading");
++  if (mensagem) mensagem.textContent = `Falha ao iniciar o player: ${error.message}`;
++  painel?.classList.remove("hidden");
++  loading?.classList.add("hidden");
++}
+ 
+ function initialize() {
+   controls = new PlayerControls(video, elements);
+   renderRecommendations(elements.relatedVideos);
+   renderSidebar(elements.sidebarVideos);
+ 
++  // Veio da home (?video=id): busca o metadado e toca exatamente esse vídeo.
++  if (VIDEO_DA_URL) {
++    buscarVideoDaApi(VIDEO_DA_URL).then((video) => {
++      if (video?.hlsUrl) {
++        loadVideo(resolveMediaUrl(video.hlsUrl), video);
++      } else {
++        showError(
++          "Este vídeo ainda não está pronto para reprodução " +
++          "(não foi transcodificado ou não existe mais)."
++        );
++      }
++    });
++  }
++
+   // Enhancement progressivo: os cards de demonstração já estão na tela; aqui
+   // tentamos trocá-los pelos dados reais da API. Se o backend estiver fora,
+   // `atualizarCatalogoDaApi` devolve listas vazias e nada é redesenhado.
+@@ -157,7 +191,7 @@ function carregarCatalogo(videoId, { autoSelecionar = true } = {}) {
+  *     banco, nada transcodificado ainda) — o player segue com a demonstração.
+  */
+ function selecionarVideoInicialDaApi(videos) {
+-  if (window.PLAYER_CONFIG?.HLS_URL) return;
++  if (window.PLAYER_CONFIG?.HLS_URL || VIDEO_DA_URL) return;
+ 
+   const primeiro = (videos || []).find((video) => video?.hlsUrl);
+   if (!primeiro) return;
+@@ -234,6 +268,16 @@ function initializeHls(url) {
+ 
+     switch (data.type) {
+       case Hls.ErrorTypes.NETWORK_ERROR:
++        if (url === CONFIG.HLS_URL && !window.PLAYER_CONFIG?.HLS_URL && !VIDEO_DA_URL) {
++          // O padrão de dev aponta para ./videos/master.m3u8, que não existe no
++          // repositório: em vez de um loop de retries num 404, explicamos como
++          // publicar vídeos de verdade (home + script de demo).
++          showError(
++            "Nenhum vídeo carregado ainda. Abra a home (home.html) e escolha um " +
++            "vídeo, ou publique vídeos de teste com: python scripts/demo_completo.py"
++          );
++          return;
++        }
+         showError("Falha de rede ao carregar o vídeo. Tentando novamente...");
+         retryTimer = setTimeout(() => loadVideo(url), 3000);
+         break;
+diff --git a/player-adaptativo/player-adaptativo/js/recommendations.js b/player-adaptativo/player-adaptativo/js/recommendations.js
+index 2c39826..b0b87b2 100644
+--- a/player-adaptativo/player-adaptativo/js/recommendations.js
++++ b/player-adaptativo/player-adaptativo/js/recommendations.js
+@@ -85,13 +85,13 @@ export function renderSidebar(container, videos = DEMO_VIDEOS.slice(0, 5)) {
+   });
+ }
+ 
+-export { DEMO_VIDEOS };
++export { DEMO_VIDEOS, escapeHtml };
+ 
+ function escapeHtml(value) {
+   return String(value)
+-    .replaceAll("&", "&amp;")
+-    .replaceAll("<", "&lt;")
+-    .replaceAll(">", "&gt;")
+-    .replaceAll('"', "&quot;")
+-    .replaceAll("'", "&#039;");
++    .replace(/&/g, "&amp;")
++    .replace(/</g, "&lt;")
++    .replace(/>/g, "&gt;")
++    .replace(/"/g, "&quot;")
++    .replace(/'/g, "&#039;");
+ }
+diff --git a/player-adaptativo/player-adaptativo/tests/home.test.js b/player-adaptativo/player-adaptativo/tests/home.test.js
+new file mode 100644
+index 0000000..409fb4b
+--- /dev/null
++++ b/player-adaptativo/player-adaptativo/tests/home.test.js
+@@ -0,0 +1,162 @@
++/**
++ * Testes da home estilo YouTube (home.html + js/home.js).
++ *
++ * O fetch é dublado por rota (nenhum teste faz rede): o catálogo vem de
++ * GET /catalogo e a página precisa renderizar a grade, a contagem, o estado
++ * vazio com o passo a passo da demo e a busca com ?q=.
++ */
++import { jest } from "@jest/globals";
++import { readFileSync } from "node:fs";
++import { fileURLToPath } from "node:url";
++
++const homeHtml = readFileSync(
++  fileURLToPath(new URL("../home.html", import.meta.url)),
++  "utf8"
++);
++
++const V1 = {
++  video_id: "v1",
++  titulo: "Frações — introdução",
++  views: 3,
++  hls_url: "http://localhost:8000/videos/v1/master.m3u8",
++  thumbnail_url: "http://localhost:8000/videos/v1/thumbnail.jpg",
++};
++
++const V2 = {
++  video_id: "v2",
++  titulo: "Geometria básica",
++  views: 1,
++  hls_url: "http://localhost:8000/videos/v2/master.m3u8",
++  thumbnail_url: "http://localhost:8000/videos/v2/thumbnail.jpg",
++};
++
++/** Dubla GET /catalogo; com `porTermo` dá para responder diferente por busca. */
++function mockarCatalogo(videos, porTermo = {}) {
++  global.fetch = jest.fn(async (url) => {
++    const alvo = String(url);
++    if (!alvo.includes("/catalogo")) {
++      return { ok: false, status: 404, json: async () => ({}) };
++    }
++    for (const [termo, lista] of Object.entries(porTermo)) {
++      if (alvo.includes(`q=${termo}`)) {
++        return { ok: true, status: 200, json: async () => ({ videos: lista, total: lista.length }) };
++      }
++    }
++    return { ok: true, status: 200, json: async () => ({ videos, total: videos.length }) };
++  });
++  return global.fetch;
++}
++
++async function subirHome() {
++  jest.resetModules();
++
++  const pagina = new DOMParser().parseFromString(homeHtml, "text/html");
++  document.body.innerHTML = pagina.body.innerHTML;
++
++  await import("../js/home.js");
++
++  for (let i = 0; i < 4; i += 1) {
++    await new Promise((resolver) => setTimeout(resolver, 0));
++  }
++}
++
++function flush(times = 3) {
++  let promise = Promise.resolve();
++  for (let i = 0; i < times; i += 1) {
++    promise = promise.then(() => new Promise((resolver) => setTimeout(resolver, 0)));
++  }
++  return promise;
++}
++
++beforeEach(() => {
++  jest.spyOn(console, "info").mockImplementation(() => {});
++});
++
++afterEach(() => {
++  jest.restoreAllMocks();
++  document.body.innerHTML = "";
++});
++
++describe("home — grade do catálogo", () => {
++  test("renderiza um card linkado para a watch page por vídeo", async () => {
++    mockarCatalogo([V1, V2]);
++
++    await subirHome();
++
++    const cards = document.querySelectorAll("#homeGrid a.home-card");
++    expect(cards).toHaveLength(2);
++    expect(cards[0].getAttribute("href")).toBe("index.html?video=v1");
++    expect(cards[0].textContent).toContain("Frações — introdução");
++  });
++
++  test("mostra a contagem de vídeos no cabeçalho da seção", async () => {
++    mockarCatalogo([V1, V2]);
++
++    await subirHome();
++
++    expect(document.querySelector("#homeCount").textContent).toBe("2 vídeos");
++  });
++
++  test("thumbnail vem da URL absoluta devolvida pela API", async () => {
++    mockarCatalogo([V1]);
++
++    await subirHome();
++
++    const img = document.querySelector("#homeGrid img");
++    expect(img.getAttribute("src")).toBe(V1.thumbnail_url);
++  });
++
++  test("catálogo vazio mostra o estado vazio com o passo a passo da demo", async () => {
++    mockarCatalogo([]);
++
++    await subirHome();
++
++    const vazio = document.querySelector("#homeEmpty");
++    expect(vazio.classList.contains("hidden")).toBe(false);
++    expect(vazio.textContent).toContain("demo_completo.py");
++  });
++
++  test("backend fora do ar não quebra a página (estado vazio)", async () => {
++    global.fetch = jest.fn(async () => {
++      throw new TypeError("Failed to fetch");
++    });
++
++    await subirHome();
++
++    expect(document.querySelector("#homeEmpty").classList.contains("hidden")).toBe(false);
++    expect(document.querySelectorAll("#homeGrid a.home-card")).toHaveLength(0);
++  });
++});
++
++describe("home — busca", () => {
++  test("submit do formulário consulta /catalogo?q= e atualiza o título", async () => {
++    const fetchMock = mockarCatalogo([V1, V2], { fra: [V1] });
++
++    await subirHome();
++
++    document.querySelector("#searchInput").value = "fra";
++    document.querySelector("#searchForm")
++      .dispatchEvent(new Event("submit", { cancelable: true }));
++    await flush();
++
++    expect(String(fetchMock.mock.calls.at(-1)[0])).toContain("/catalogo?q=fra");
++    expect(document.querySelector("#homeTitle").textContent).toContain("fra");
++    expect(document.querySelectorAll("#homeGrid a.home-card")).toHaveLength(1);
++  });
++
++  test("busca sem resultado esconde o passo a passo de upload", async () => {
++    mockarCatalogo([V1], { xyz: [] });
++
++    await subirHome();
++
++    document.querySelector("#searchInput").value = "xyz";
++    document.querySelector("#searchForm")
++      .dispatchEvent(new Event("submit", { cancelable: true }));
++    await flush();
++
++    const vazio = document.querySelector("#homeEmpty");
++    expect(vazio.classList.contains("hidden")).toBe(false);
++    expect(vazio.classList.contains("hide-details")).toBe(true);
++    expect(vazio.querySelector("strong").textContent).toContain("xyz");
++  });
++});
+diff --git a/player-adaptativo/player-adaptativo/tests/player.video-param.test.js b/player-adaptativo/player-adaptativo/tests/player.video-param.test.js
+new file mode 100644
+index 0000000..cfca9ad
+--- /dev/null
++++ b/player-adaptativo/player-adaptativo/tests/player.video-param.test.js
+@@ -0,0 +1,112 @@
++/**
++ * A watch page aberta pela home: index.html?video={id}.
++ *
++ * O `@jest-environment-options` fixa a URL do jsdom com o query string — é o
++ * que o js/player.js lê para saber qual vídeo tocar. O fetch dublado responde
++ * em GET /catalogo/{id} e o HLS.js é um dublê que grava as URLs de loadSource.
++ *
++ * @jest-environment jsdom
++ * @jest-environment-options {"url": "http://localhost:8000/player/index.html?video=v-param"}
++ */
++import { jest } from "@jest/globals";
++import { readFileSync } from "node:fs";
++import { fileURLToPath } from "node:url";
++
++const indexHtml = readFileSync(
++  fileURLToPath(new URL("../index.html", import.meta.url)),
++  "utf8"
++);
++
++let urlsCarregadas;
++
++class FakeHls {
++  constructor() {
++    this.levels = [{ height: 360, bitrate: 464000 }];
++    this.currentLevel = -1;
++  }
++
++  loadSource(url) {
++    urlsCarregadas.push(url);
++  }
++
++  attachMedia() {}
++  on() {}
++  destroy() {}
++}
++
++FakeHls.isSupported = () => true;
++FakeHls.Events = {
++  MANIFEST_PARSED: "hlsManifestParsed",
++  FRAG_BUFFERED: "hlsFragBuffered",
++  LEVEL_SWITCHED: "hlsLevelSwitched",
++  ERROR: "hlsError",
++};
++FakeHls.ErrorTypes = { NETWORK_ERROR: "networkError", MEDIA_ERROR: "mediaError" };
++FakeHls.ErrorDetails = { BUFFER_STALLED_ERROR: "bufferStalledError" };
++
++beforeEach(() => {
++  urlsCarregadas = [];
++  global.Hls = FakeHls;
++  window.Hls = FakeHls;
++  jest.spyOn(console, "info").mockImplementation(() => {});
++  jest.spyOn(console, "error").mockImplementation(() => {});
++});
++
++afterEach(() => {
++  jest.restoreAllMocks();
++  document.body.innerHTML = "";
++});
++
++async function subirWatchPage() {
++  jest.resetModules();
++
++  const pagina = new DOMParser().parseFromString(indexHtml, "text/html");
++  document.body.innerHTML = pagina.body.innerHTML;
++
++  await import("../js/player.js");
++
++  for (let i = 0; i < 6; i += 1) {
++    await new Promise((resolver) => setTimeout(resolver, 0));
++  }
++}
++
++test("toca exatamente o vídeo pedido na URL", async () => {
++  global.fetch = jest.fn(async (url) => {
++    const alvo = String(url);
++    if (alvo.includes("/catalogo/v-param")) {
++      return {
++        ok: true,
++        status: 200,
++        json: async () => ({
++          video_id: "v-param",
++          titulo: "Vídeo escolhido na home",
++          views: 2,
++          hls_url: "http://localhost:8000/videos/v-param/master.m3u8",
++          thumbnail_url: "http://localhost:8000/videos/v-param/thumbnail.jpg",
++        }),
++      };
++    }
++    return { ok: true, status: 200, json: async () => ({}) };
++  });
++
++  await subirWatchPage();
++
++  expect(urlsCarregadas.at(-1)).toBe(
++    "http://localhost:8000/videos/v-param/master.m3u8"
++  );
++  expect(document.querySelector("#videoTitle").textContent).toBe(
++    "Vídeo escolhido na home"
++  );
++});
++
++test("vídeo da URL que não existe mais: erro legível, sem spinner infinito", async () => {
++  global.fetch = jest.fn(async () => ({ ok: false, status: 404, json: async () => ({}) }));
++
++  await subirWatchPage();
++
++  expect(document.querySelector("#playerError").classList.contains("hidden")).toBe(false);
++  expect(document.querySelector("#playerErrorMessage").textContent).toContain(
++    "não está pronto"
++  );
++  expect(document.querySelector("#playerLoading").classList.contains("hidden")).toBe(true);
++});
+diff --git a/scripts/demo_completo.py b/scripts/demo_completo.py
+index 1e3bf85..e154544 100644
+--- a/scripts/demo_completo.py
++++ b/scripts/demo_completo.py
+@@ -167,7 +167,8 @@ def main() -> int:
+         print(f"    score {item['score']} — {item['titulo']}")
+ 
+     print("\n== Tudo certo! Abra o player: ==")
+-    print(f"    {args.base_url}/player/")
++    print(f"    Home (grade de vídeos):  {args.base_url}/player/home.html")
++    print(f"    Watch (player):          {args.base_url}/player/")
+     print("O player vai carregar o catálogo real (em alta + relacionados) e")
+     print("tocar o primeiro vídeo transcodificado automaticamente.")
+     return 0
+-- 
+2.39.5
+

@@ -110,7 +110,9 @@ def atualizar_status(video_id: str, status: str) -> dict | None:
         .eq("video_id", video_id)
         .execute()
     )
-    return response.data[0]
+    # update em video_id inexistente volta vazio: None em vez de IndexError
+    # (a task do Celery só loga o aviso, não quebra por causa disso).
+    return response.data[0] if response.data else None
 
 
 def listar_videos(status: str = None) -> list[dict]:

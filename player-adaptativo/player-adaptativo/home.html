@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Catálogo de vídeos educacionais com streaming HLS adaptativo">
+  <title>EduStream — Início</title>
+  <link rel="stylesheet" href="./css/player.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="./home.html" aria-label="EduStream — início">Edu<span>Stream</span></a>
+
+    <form class="search" id="searchForm" role="search">
+      <input id="searchInput" type="search" placeholder="Pesquisar vídeos..." autocomplete="off">
+      <button type="submit" aria-label="Pesquisar">⌕</button>
+    </form>
+
+    <button class="icon-button" id="profileButton" type="button" aria-label="Perfil">👤</button>
+
+    <!-- Upload pela interface: antes, publicar um vídeo exigia Swagger ou o
+         scripts/demo_completo.py — ruim para a apresentação. Abre o modal. -->
+    <button class="btn-primary topbar-upload" id="uploadOpenButton" type="button"
+            title="Enviar vídeo para a plataforma">Enviar vídeo</button>
+  </header>
+
+  <!-- Modal de upload (multipart -> POST /upload, polling de /status) -->
+  <div class="modal hidden" id="uploadModal" role="dialog" aria-modal="true" aria-labelledby="uploadModalTitle">
+    <form class="modal-card" id="uploadForm">
+      <div class="modal-header">
+        <strong id="uploadModalTitle">Enviar vídeo</strong>
+        <button class="icon-button" id="uploadClose" type="button" aria-label="Fechar">×</button>
+      </div>
+
+      <label>Arquivo (mp4, avi, mov, webm)
+        <input type="file" id="uploadFile" accept=".mp4,.avi,.mov,.webm" required>
+      </label>
+      <label>Título *
+        <input type="text" id="uploadTitulo" maxlength="120" required>
+      </label>
+      <label>Autor *
+        <input type="text" id="uploadAutor" maxlength="80" required>
+      </label>
+      <label>Descrição
+        <textarea id="uploadDescricao" rows="2"></textarea>
+      </label>
+      <label>Tags (separadas por vírgula)
+        <input type="text" id="uploadTags" placeholder="matemática, frações">
+      </label>
+      <label>Categoria
+        <input type="text" id="uploadCategoria" maxlength="60">
+      </label>
+
+      <div class="upload-status hidden" id="uploadStatus"></div>
+      <button class="btn-primary" id="uploadSubmit" type="submit">Enviar</button>
+    </form>
+  </div>
+
+  <main class="page home-page">
+    <div class="section-title-row home-title-row">
+      <h2 id="homeTitle">Catálogo</h2>
+      <span class="home-count" id="homeCount"></span>
+    </div>
+
+    <div class="video-grid home-grid" id="homeGrid"></div>
+
+    <div class="empty-state hidden" id="homeEmpty">
+      <strong>Nenhum vídeo pronto para assistir ainda.</strong>
+      <p>
+        Os vídeos aparecem aqui depois de serem transcodificados pelo backend.
+        Para publicar vídeos de teste agora (API + Redis + worker no ar):
+      </p>
+      <p><code>python scripts/demo_completo.py</code></p>
+      <p class="empty-hint">
+        Se a API estiver fora do ar, suba primeiro: <code>uvicorn app.main:app</code>
+      </p>
+    </div>
+  </main>
+
+  <!-- Configuração da API (origem do backend) — precisa vir antes do módulo. -->
+  <script src="./config.js"></script>
+  <script type="module" src="./js/home.js"></script>
+</body>
+</html>

@@ -12,6 +12,8 @@ a rota: status HTTP, formato da resposta, ordenação, validação de parâmetro
 """
 from __future__ import annotations
 
+import copy
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -74,9 +76,17 @@ CATALOGO = [
 
 @pytest.fixture
 def banco(monkeypatch):
-    """Dubla o acesso ao Supabase com um catálogo fixo."""
+    """Dubla o acesso ao Supabase com um catálogo fixo.
+
+    Cópia profunda de propósito: vários testes MUTAM as tags dos vídeos para
+    exercitar normalização (string, caixa alta...). Sem o deepcopy, essas
+    mutações vazavam pelo CATALOGO compartilhado e contaminavam os testes
+    seguintes (ex.: v-geo ficava com a tag "frações" para o resto da suíte).
+    """
     estado = {
-        "videos": {item["video_id"]: item for item in CATALOGO},
+        "videos": {
+            item["video_id"]: copy.deepcopy(item) for item in CATALOGO
+        },
         "erro": None,
     }
 
@@ -431,3 +441,91 @@ def test_fluxo_completo_watch_depois_trending(api, views):
     resposta = client.get("/trending")
 
     assert resposta.json()["trending"][0]["video_id"] == "v-fra"
+
+
+# ---------------------------------------------------------------------------
+# GET /catalogo e /catalogo/{video_id} — home do player
+# ---------------------------------------------------------------------------
+
+def test_catalogo_lista_os_videos_prontos(api):
+    resposta = client.get("/catalogo")
+
+    assert resposta.status_code == 200
+    ids = {item["video_id"] for item in resposta.json()["videos"]}
+    assert ids == {"v-fra", "v-geo", "v-his", "v-quim"}
+
+
+def test_catalogo_exclui_videos_nao_concluidos(api, banco):
+    banco["videos"]["v-pend"] = video("v-pend", "Pendente", ["matemática"], status="pending")
+
+    ids = {item["video_id"] for item in client.get("/catalogo").json()["videos"]}
+
+    assert "v-pend" not in ids
+
+
+def test_catalogo_busca_por_titulo(api):
+    ids = [item["video_id"] for item in client.get("/catalogo?q=fra").json()["videos"]]
+
+    assert ids == ["v-fra"]
+
+
+def test_catalogo_busca_por_tag(api):
+    ids = [item["video_id"] for item in client.get("/catalogo?q=geometria").json()["videos"]]
+
+    assert ids == ["v-geo"]
+
+
+def test_catalogo_busca_sem_resultado_devolve_lista_vazia(api):
+    corpo = client.get("/catalogo?q=xyz").json()
+
+    assert corpo["videos"] == []
+    assert corpo["total"] == 0
+
+
+def test_catalogo_ordena_pelos_mais_assistidos(api, views):
+    views.contagens["v-quim"] = 90
+
+    primeiro = client.get("/catalogo").json()["videos"][0]
+
+    assert primeiro["video_id"] == "v-quim"
+
+
+def test_catalogo_detalhe_enriquece_com_urls_absolutas(api):
+    item = client.get("/catalogo/v-fra").json()
+
+    assert item["titulo"] == "Frações"
+    assert item["hls_url"] == "http://testserver/videos/v-fra/master.m3u8"
+    assert item["thumbnail_url"] == "http://testserver/videos/v-fra/thumbnail.jpg"
+
+
+def test_catalogo_detalhe_inexistente_retorna_404(api):
+    assert client.get("/catalogo/fantasma").status_code == 404
+
+
+def test_trending_com_redis_fora_devolve_lista_vazia_sem_500(api, views):
+    """Contador indisponível não pode derrubar a home nem o player."""
+    import redis as modulo_redis
+
+    def _mais_assistidos_fora(limite=10):
+        raise modulo_redis.ConnectionError("Connection refused")
+
+    views.mais_assistidos = _mais_assistidos_fora
+
+    resposta = client.get("/trending")
+
+    assert resposta.status_code == 200
+    assert resposta.json()["trending"] == []
+    assert "indisponível" in resposta.json()["motivo"]
+
+
+def test_catalogo_nao_quebra_sem_o_contador_de_views(api, views):
+    def _boom(video_id):
+        raise ConnectionError("redis fora")
+
+    views.contar_visualizacoes = _boom
+
+    resposta = client.get("/catalogo")
+
+    assert resposta.status_code == 200
+    assert len(resposta.json()["videos"]) == 4
+    assert all(item["views"] == 0 for item in resposta.json()["videos"])
