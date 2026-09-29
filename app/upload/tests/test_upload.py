@@ -202,3 +202,21 @@ def test_broker_fora_do_ar_nao_derruba_o_upload(monkeypatch):
 
     assert response.status_code == 200
     assert response.json()["fila"] == "indisponivel"
+
+
+def test_banco_indisponivel_devolve_503_com_orientacao(monkeypatch):
+    """Tabela 'videos' não criada (ou credencial errada) não pode virar 500."""
+    def _boom(metadata):
+        raise Exception("relation public.videos does not exist")
+
+    monkeypatch.setattr(router, "save_metadata", _boom)
+
+    arquivo = io.BytesIO(b"conteudo falso de video")
+    response = client.post(
+        "/upload",
+        files={"file": ("video.mp4", arquivo, "video/mp4")},
+        data=dados_validos(),
+    )
+
+    assert response.status_code == 503
+    assert "schema.sql" in response.json()["detail"]

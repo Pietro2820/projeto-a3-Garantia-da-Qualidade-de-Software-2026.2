@@ -1,0 +1,202 @@
+From 16de7c821c07e3cb1feb5b263af29d1b97c7abe5 Mon Sep 17 00:00:00 2001
+From: "Qwen (agente)" <agente@qwen.local>
+Date: Tue, 29 Sep 2026 00:39:54 +0000
+Subject: [PATCH] feat(player): play de qualquer video do catalogo sem
+ configuracao por video
+
+- recommendations/router: hls_url e thumbnail_url viram URLs publicas
+  absolutas quando S3_PUBLIC_URL esta configurado (Supabase/CDN); sem ele,
+  mantem o caminho relativo antigo (dev local e testes inalterados)
+- player.js: le ?v=<id> da URL; sem HLS_URL explicito no config.js, da play
+  automatico no primeiro video do catalogo (relacionados/em alta) que tenha
+  hls_url; clique num card atualiza o ?v= e re-recarrega relacionados/sidebar
+- testes: vendor.test aceita config.js opcional (por dev, no .gitignore);
+  bootstrap fixa HLS_URL para exercitar o fallback sem HLS isoladamente
+---
+ app/recommendations/router.py                 | 16 +++++-
+ .../player-adaptativo/js/player.js            | 57 +++++++++++++++++--
+ .../tests/player.bootstrap.test.js            |  4 ++
+ .../player-adaptativo/tests/vendor.test.js    |  7 ++-
+ 4 files changed, 76 insertions(+), 8 deletions(-)
+
+diff --git a/app/recommendations/router.py b/app/recommendations/router.py
+index eeb1013..5112185 100644
+--- a/app/recommendations/router.py
++++ b/app/recommendations/router.py
+@@ -21,6 +21,7 @@ Decisões de projeto:
+ from __future__ import annotations
+ 
+ import logging
++import os
+ 
+ from fastapi import APIRouter, HTTPException, Query
+ from pydantic import BaseModel, Field
+@@ -72,6 +73,17 @@ def _executar_no_banco(operacao, *args, **kwargs):
+         ) from exc
+ 
+ 
++def _url_publica(chave: str) -> str:
++    """URL pública absoluta do bucket (S3_PUBLIC_URL) ou caminho relativo.
++
++    Com S3_PUBLIC_URL configurado (Supabase/CloudFront), o player recebe uma
++    URL absoluta que abre direto no navegador. Sem ele (dev local sem S3),
++    mantém o caminho relativo antigo para não quebrar testes/contratos.
++    """
++    base = (os.getenv("S3_PUBLIC_URL") or "").rstrip("/")
++    return f"{base}/{chave}" if base else f"/{chave}"
++
++
+ def _enriquecer(video: dict, score: float | None = None) -> dict:
+     """Acrescenta ao metadado do contrato #2 o que o player usa no card."""
+     video_id = video.get("video_id")
+@@ -79,8 +91,8 @@ def _enriquecer(video: dict, score: float | None = None) -> dict:
+         **video,
+         "tags": normalizar_tags(video.get("tags")),
+         "views": views_store.contar_visualizacoes(video_id) if video_id else 0,
+-        "hls_url": f"/videos/{video_id}/master.m3u8" if video_id else None,
+-        "thumbnail_url": f"/videos/{video_id}/thumbnail.jpg" if video_id else None,
++        "hls_url": _url_publica(f"videos/{video_id}/master.m3u8") if video_id else None,
++        "thumbnail_url": _url_publica(f"videos/{video_id}/thumbnail.jpg") if video_id else None,
+     }
+     if score is not None:
+         resposta["score"] = score
+diff --git a/player-adaptativo/player-adaptativo/js/player.js b/player-adaptativo/player-adaptativo/js/player.js
+index fc6cbd0..994fc6c 100644
+--- a/player-adaptativo/player-adaptativo/js/player.js
++++ b/player-adaptativo/player-adaptativo/js/player.js
+@@ -7,6 +7,8 @@ import {
+ } from "./recommendations.js";
+ import { atualizarCatalogoDaApi, registrarVisualizacao } from "./catalog.js";
+ 
++const URL_PARAMS = new URLSearchParams(window.location.search);
++
+ const CONFIG = {
+   // Durante o desenvolvimento, troque por um master.m3u8 real.
+   // Exemplo local:
+@@ -14,10 +16,13 @@ const CONFIG = {
+   HLS_URL: window.PLAYER_CONFIG?.HLS_URL || "./videos/master.m3u8",
+ 
+   // Quando o backend estiver pronto:
+-  VIDEO_ID: window.PLAYER_CONFIG?.VIDEO_ID || "demo-video",
++  VIDEO_ID: URL_PARAMS.get("v") || window.PLAYER_CONFIG?.VIDEO_ID || "demo-video",
+   USER_ID: window.PLAYER_CONFIG?.USER_ID || "demo-user"
+ };
+ 
++// Se o dev fixou um HLS_URL no config.js, ele manda mais que o catálogo.
++const HLS_URL_EXPLICITA = Boolean(window.PLAYER_CONFIG?.HLS_URL);
++
+ const video = document.querySelector("#video");
+ 
+ const elements = {
+@@ -63,13 +68,40 @@ function initialize() {
+   // Enhancement progressivo: os cards de demonstração já estão na tela; aqui
+   // tentamos trocá-los pelos dados reais da API. Se o backend estiver fora,
+   // `atualizarCatalogoDaApi` devolve listas vazias e nada é redesenhado.
+-  atualizarCatalogoDaApi({
++  const catalogo = atualizarCatalogoDaApi({
+     relatedContainer: elements.relatedVideos,
+     sidebarContainer: elements.sidebarVideos,
+     videoId: CONFIG.VIDEO_ID
+-  }).catch((error) => console.info("Catálogo da API indisponível:", error));
++  }).catch((error) => {
++    console.info("Catálogo da API indisponível:", error);
++    return { relacionados: [], emAlta: [] };
++  });
++
++  // Play "sem configurar nada": se o dev não fixou um HLS_URL no config.js,
++  // o player sintoniza sozinho o vídeo pedido na URL (?v=<id>) ou o primeiro
++  // do catálogo real (relacionados/em alta) que tenha hls_url.
++  catalogo.then(({ relacionados, emAlta }) => {
++    const lista = [...relacionados, ...emAlta];
++    const pedidoId = URL_PARAMS.get("v");
++    const pedido = pedidoId
++      ? lista.find((item) => item.id === pedidoId && item.hlsUrl)
++      : null;
++    const primeiro = lista.find((item) => item.hlsUrl) || null;
++    const alvo = pedido || (HLS_URL_EXPLICITA ? null : primeiro);
++
++    if (alvo) {
++      CONFIG.VIDEO_ID = alvo.id;
++      window.history.replaceState(null, "", `?v=${encodeURIComponent(alvo.id)}`);
++      loadVideo(alvo.hlsUrl, alvo);
++    } else if (!HLS_URL_EXPLICITA) {
++      showError(
++        "Nenhum vídeo no catálogo ainda: rode o upload de um vídeo ou " +
++        "defina HLS_URL no config.js."
++      );
++    }
+ 
+-  registrarVisualizacao(CONFIG.VIDEO_ID, CONFIG.USER_ID);
++    registrarVisualizacao(CONFIG.VIDEO_ID, CONFIG.USER_ID);
++  });
+ 
+   elements.qualitySelect.addEventListener("change", (event) => {
+     try {
+@@ -96,6 +128,17 @@ function initialize() {
+ 
+     registrarVisualizacao(selected?.id, CONFIG.USER_ID);
+ 
++    if (selected?.id) {
++      CONFIG.VIDEO_ID = selected.id;
++      window.history.replaceState(null, "", `?v=${encodeURIComponent(selected.id)}`);
++      // Atualiza relacionados/sidebar em torno do novo vídeo escolhido.
++      atualizarCatalogoDaApi({
++        relatedContainer: elements.relatedVideos,
++        sidebarContainer: elements.sidebarVideos,
++        videoId: selected.id
++      }).catch(() => {});
++    }
++
+     if (selected?.hlsUrl) {
+       loadVideo(selected.hlsUrl, selected);
+     } else {
+@@ -103,7 +146,11 @@ function initialize() {
+     }
+   });
+ 
+-  loadVideo();
++  // Sem HLS_URL fixo no config.js quem dá o play é o catálogo (bloco acima);
++  // com HLS_URL fixo, toca imediatamente o canal configurado.
++  if (HLS_URL_EXPLICITA) {
++    loadVideo();
++  }
+ }
+ 
+ function loadVideo(url = CONFIG.HLS_URL, metadata = null) {
+diff --git a/player-adaptativo/player-adaptativo/tests/player.bootstrap.test.js b/player-adaptativo/player-adaptativo/tests/player.bootstrap.test.js
+index 9b416d5..4e91cce 100644
+--- a/player-adaptativo/player-adaptativo/tests/player.bootstrap.test.js
++++ b/player-adaptativo/player-adaptativo/tests/player.bootstrap.test.js
+@@ -30,6 +30,10 @@ beforeAll(async () => {
+   // só não precisa poluir a saída do teste.
+   jest.spyOn(console, "info").mockImplementation(() => {});
+ 
++  // Canal fixado: este teste valida o bootstrap e o fallback sem HLS — não a
++  // auto-seleção pelo catálogo (com HLS_URL explícito, o config manda mais).
++  window.PLAYER_CONFIG = { HLS_URL: "./videos/master.m3u8" };
++
+   const pagina = new DOMParser().parseFromString(indexHtml, "text/html");
+   document.body.innerHTML = pagina.body.innerHTML;
+ 
+diff --git a/player-adaptativo/player-adaptativo/tests/vendor.test.js b/player-adaptativo/player-adaptativo/tests/vendor.test.js
+index 3d9f7fa..9143fec 100644
+--- a/player-adaptativo/player-adaptativo/tests/vendor.test.js
++++ b/player-adaptativo/player-adaptativo/tests/vendor.test.js
+@@ -98,8 +98,13 @@ describe("index.html — nenhum recurso externo", () => {
+   });
+ 
+   test("toda referência local aponta para arquivo que existe", () => {
++    // config.js é opcional por design: configuração por dev (no .gitignore).
++    // Sem ele o player cai no catálogo da API / defaults — a página sobe igual.
++    const opcionais = new Set(["./config.js"]);
+     const locais = referenciasDeRecurso().filter(
+-      (url) => url.startsWith("./") || url.startsWith("../")
++      (url) =>
++        (url.startsWith("./") || url.startsWith("../")) &&
++        !opcionais.has(url)
+     );
+ 
+     expect(locais.length).toBeGreaterThan(0);
+-- 
+2.39.5
+

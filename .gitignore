@@ -43,3 +43,6 @@ data/
 # Artefatos locais de execução (sandbox/dev)
 .venv-test/
 dump.rdb
+
+# Logs e PID files do scripts/subir_tudo.py
+logs/
