@@ -72,6 +72,20 @@ def _executar_no_banco(operacao, *args, **kwargs):
         ) from exc
 
 
+def _views_seguras(video_id: str) -> int:
+    """Contagem de views que nunca derruba a rota.
+
+    Sem Redis (dev no Windows sem Docker, por exemplo), o contador de
+    visualizações está indisponível — o catálogo continua vindo do banco,
+    só que com 0 views, em vez de virar um erro 500 na cara do player.
+    """
+    try:
+        return views_store.contar_visualizacoes(video_id)
+    except Exception as exc:
+        logger.warning("Contador de visualizações indisponível: %s", exc)
+        return 0
+
+
 def _url_absoluta(request: Request | None, caminho: str) -> str:
     """Transforma '/videos/x/master.m3u8' em URL absoluta usando a origem da
     requisição (ex: 'http://localhost:8000/videos/x/master.m3u8').
@@ -94,7 +108,7 @@ def _enriquecer(video: dict, score: float | None = None,
     resposta = {
         **video,
         "tags": normalizar_tags(video.get("tags")),
-        "views": views_store.contar_visualizacoes(video_id) if video_id else 0,
+        "views": _views_seguras(video_id) if video_id else 0,
         "hls_url": (
             _url_absoluta(request, f"/videos/{video_id}/master.m3u8")
             if video_id else None
@@ -203,7 +217,14 @@ def recomendacoes_personalizadas(
 @router.get("/trending")
 def trending(request: Request, limite: int = Query(default=10, ge=1, le=50)):
     """Mais assistidos, segundo o contador em Redis."""
-    ranking = views_store.mais_assistidos(limite)
+    try:
+        ranking = views_store.mais_assistidos(limite)
+    except Exception as exc:  # Redis fora do ar não pode derrubar o player
+        logger.warning("Contador de visualizações indisponível: %s", exc)
+        return {
+            "trending": [],
+            "motivo": "contador de visualizações indisponível (Redis fora do ar?)",
+        }
 
     if not ranking:
         return {"trending": [], "motivo": "nenhuma visualização registrada ainda"}
@@ -220,6 +241,52 @@ def trending(request: Request, limite: int = Query(default=10, ge=1, le=50)):
         videos.append(enriquecido)
 
     return {"trending": videos}
+
+
+# ---------------------------------------------------------------------------
+# GET /catalogo e GET /catalogo/{video_id} — usados pela home do player
+# ---------------------------------------------------------------------------
+
+@router.get("/catalogo")
+def catalogo(
+    request: Request,
+    q: str = Query(default="", max_length=100, description="Busca por título ou tag"),
+    limite: int = Query(default=50, ge=1, le=200),
+):
+    """Catálogo de vídeos prontos para assistir (status='completed').
+
+    É o endpoint que alimenta a home do player (grade estilo YouTube) e a
+    busca do topo da página. Sem Redis o catálogo continua funcionando —
+    só as contagens de views ficam em zero.
+    """
+    videos = _catalogo_pronto()
+
+    termo = q.strip().lower()
+    if termo:
+        videos = [
+            video for video in videos
+            if termo in str(video.get("titulo", "")).lower()
+            or any(termo in tag for tag in normalizar_tags(video.get("tags")))
+        ]
+
+    videos.sort(
+        key=lambda video: (-_views_seguras(video.get("video_id")),
+                           str(video.get("titulo", "")))
+    )
+
+    return {
+        "videos": [_enriquecer(video, request=request) for video in videos[:limite]],
+        "total": len(videos),
+    }
+
+
+@router.get("/catalogo/{video_id}")
+def catalogo_detalhe(request: Request, video_id: str):
+    """Metadado enriquecido de UM vídeo (a home navega para ?video={id})."""
+    video = _executar_no_banco(buscar_video, video_id)
+    if video is None:
+        raise HTTPException(status_code=404, detail="video_id não encontrado")
+    return _enriquecer(video, request=request)
 
 
 # ---------------------------------------------------------------------------

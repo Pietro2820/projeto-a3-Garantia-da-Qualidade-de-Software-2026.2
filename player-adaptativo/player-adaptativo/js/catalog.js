@@ -12,7 +12,7 @@
  *   É o padrão "enhancement progressivo": renderiza o demo na hora, troca por
  *   dados reais quando a API responde.
  */
-import { getRelatedVideos, getTrending, registerWatch } from "./api.js";
+import { getCatalogo, getRelatedVideos, getTrending, getVideo, registerWatch } from "./api.js";
 import { renderRecommendations, renderSidebar } from "./recommendations.js";
 
 /**
@@ -76,6 +76,30 @@ export async function buscarEmAlta() {
   } catch (error) {
     console.info("Em alta indisponível, mantendo demonstração:", error.message);
     return [];
+  }
+}
+
+/**
+ * Catálogo completo de vídeos prontos (home estilo YouTube + busca).
+ * Devolve [] se a API falhar — a home mostra o estado vazio explicando o que fazer.
+ */
+export async function buscarCatalogo(termo = "") {
+  try {
+    const corpo = await getCatalogo(termo);
+    return (corpo?.videos ?? []).map(paraCard).filter(Boolean);
+  } catch (error) {
+    console.info("Catálogo indisponível:", error.message);
+    return [];
+  }
+}
+
+/** Um vídeo pelo id (a watch page abre com ?video={id} e busca este metadado). */
+export async function buscarVideoDaApi(videoId) {
+  try {
+    return paraCard(await getVideo(videoId));
+  } catch (error) {
+    console.info(`Vídeo ${videoId} indisponível na API:`, error.message);
+    return null;
   }
 }
 
