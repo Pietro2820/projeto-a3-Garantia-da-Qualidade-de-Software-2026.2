@@ -16,7 +16,11 @@ ALLOWED_EXTENSIONS = {".mp4", ".avi", ".mov", ".webm"}
 # 500MB
 MAX_SIZE = 500 * 1024 * 1024
 
-UPLOAD_DIR = Path(os.getenv("UPLOAD_DIR", "uploads"))
+# Padrão ancorado na raiz do repositório: o worker Celery procura o original
+# pelo caminho absoluto devolvido aqui, então os dois processos precisam
+# concordar sobre a pasta mesmo com cwd diferentes.
+RAIZ_PROJETO = Path(__file__).resolve().parents[2]
+UPLOAD_DIR = Path(os.getenv("UPLOAD_DIR", RAIZ_PROJETO / "uploads"))
 
 
 def parse_tags(tags: str) -> list[str]:
@@ -161,7 +165,25 @@ async def upload_video(
         "status": "pending",
     }
 
-    save_metadata(metadata)
+    # Banco indisponível (tabela 'videos' não criada, credencial errada, RLS
+    # bloqueando) não pode virar 500 com stacktrace: o arquivo já está no
+    # disco, então avisamos com 503 legível dizendo exatamente o que conferir.
+    try:
+        save_metadata(metadata)
+    except Exception as exc:
+        logger.error("Falha ao gravar metadados no banco: %s", exc)
+        # Sem metadados o arquivo vira lixo órfão no disco: remove a pasta
+        # antes de devolver o erro.
+        shutil.rmtree(video_folder, ignore_errors=True)
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "Upload recebido, mas não foi possível gravar os metadados no "
+                "banco. Rode supabase/schema.sql no SQL Editor do Supabase e "
+                "confira SUPABASE_URL/SUPABASE_KEY no .env "
+                "(python scripts/verificar_supabase.py diagnostica)."
+            ),
+        ) from exc
 
     fila = _enfileirar_processamento(video_id, str(file_path))
 

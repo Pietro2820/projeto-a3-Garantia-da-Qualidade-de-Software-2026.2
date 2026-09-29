@@ -85,13 +85,13 @@ export function renderSidebar(container, videos = DEMO_VIDEOS.slice(0, 5)) {
   });
 }
 
-export { DEMO_VIDEOS };
+export { DEMO_VIDEOS, escapeHtml };
 
 function escapeHtml(value) {
   return String(value)
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#039;");
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
 }
