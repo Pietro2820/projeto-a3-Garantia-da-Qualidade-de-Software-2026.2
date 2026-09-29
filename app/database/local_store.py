@@ -31,13 +31,16 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
-CAMINHO_PADRAO = "data/videos.json"
+# Raiz do repositório: API e worker Celery precisam ler/escrever o MESMO
+# banco mesmo quando iniciados de diretórios diferentes.
+RAIZ_PROJETO = Path(__file__).resolve().parents[2]
+CAMINHO_PADRAO = RAIZ_PROJETO / "data" / "videos.json"
 
 _lock = threading.Lock()
 
 
 def caminho_do_banco() -> Path:
-    return Path(os.getenv("LOCAL_DB_PATH", CAMINHO_PADRAO))
+    return Path(os.getenv("LOCAL_DB_PATH", str(CAMINHO_PADRAO)))
 
 
 def _ler() -> list[dict]:

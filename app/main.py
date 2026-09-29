@@ -35,8 +35,14 @@ mimetypes.add_type("application/vnd.apple.mpegurl", ".m3u8")
 mimetypes.add_type("video/mp2t", ".ts")
 
 # Mesmas variáveis usadas pelos módulos de upload/transcodificação.
-VIDEOS_DIR = Path(os.getenv("VIDEOS_DIR", "videos"))
-PLAYER_DIR = Path(os.getenv("PLAYER_DIR", "player-adaptativo/player-adaptativo"))
+# Padrão ancorado na RAIZ DO REPOSITÓRIO (e não no diretório atual do
+# terminal): assim `uvicorn app.main:app` funciona de qualquer cwd — antes,
+# iniciar fora da raiz fazia o mount do /player não existir (404 "Not Found").
+RAIZ_PROJETO = Path(__file__).resolve().parent.parent
+VIDEOS_DIR = Path(os.getenv("VIDEOS_DIR", RAIZ_PROJETO / "videos"))
+PLAYER_DIR = Path(
+    os.getenv("PLAYER_DIR", RAIZ_PROJETO / "player-adaptativo" / "player-adaptativo")
+)
 
 app = FastAPI(
     title="Plataforma de Vídeo Educacional",

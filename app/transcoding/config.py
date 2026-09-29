@@ -77,10 +77,13 @@ def ladder() -> list[Resolucao]:
 # ---------------------------------------------------------------------------
 # Caminhos e parâmetros de saída
 # ---------------------------------------------------------------------------
-# UPLOAD_DIR: mesmo nome de variável que o app/upload/router.py do Rafael usa,
-# para os dois módulos olharem a mesma pasta sem configurar nada duas vezes.
-BASE_UPLOADS = Path(os.getenv("UPLOAD_DIR", "uploads"))    # entrada  (contrato com Rafael)
-BASE_VIDEOS = Path(os.getenv("VIDEOS_DIR", "videos"))      # saída    (contrato com Pedro)
+# Padrões ancorados na raiz do repositório (derivada deste arquivo), para que
+# worker Celery e API escrevam/leiam os MESMOS caminhos mesmo quando um deles
+# é iniciado de outro diretório. UPLOAD_DIR usa o mesmo nome de variável do
+# app/upload/router.py do Rafael, sem configurar nada duas vezes.
+RAIZ_PROJETO = Path(__file__).resolve().parents[2]
+BASE_UPLOADS = Path(os.getenv("UPLOAD_DIR", RAIZ_PROJETO / "uploads"))  # entrada  (contrato com Rafael)
+BASE_VIDEOS = Path(os.getenv("VIDEOS_DIR", RAIZ_PROJETO / "videos"))    # saída    (contrato com Pedro)
 
 HLS_SEGMENT_SECONDS = int(os.getenv("HLS_SEGMENT_SECONDS", "4"))
 FFMPEG_PRESET = os.getenv("FFMPEG_PRESET", "veryfast")

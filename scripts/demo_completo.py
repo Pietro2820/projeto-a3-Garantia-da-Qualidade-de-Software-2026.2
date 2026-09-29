@@ -167,7 +167,8 @@ def main() -> int:
         print(f"    score {item['score']} — {item['titulo']}")
 
     print("\n== Tudo certo! Abra o player: ==")
-    print(f"    {args.base_url}/player/")
+    print(f"    Home (grade de vídeos):  {args.base_url}/player/home.html")
+    print(f"    Watch (player):          {args.base_url}/player/")
     print("O player vai carregar o catálogo real (em alta + relacionados) e")
     print("tocar o primeiro vídeo transcodificado automaticamente.")
     return 0

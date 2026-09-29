@@ -5,8 +5,16 @@ import {
   renderSidebar,
   DEMO_VIDEOS
 } from "./recommendations.js";
-import { atualizarCatalogoDaApi, registrarVisualizacao } from "./catalog.js";
+import {
+  atualizarCatalogoDaApi,
+  buscarVideoDaApi,
+  registrarVisualizacao
+} from "./catalog.js";
 import { API_BASE_URL } from "./api.js";
+
+// index.html?video={id} — é assim que a home (home.html) abre um vídeo.
+const PARAMS = new URLSearchParams(window.location.search);
+const VIDEO_DA_URL = PARAMS.get("video");
 
 const CONFIG = {
   // Durante o desenvolvimento, troque por um master.m3u8 real.
@@ -15,7 +23,7 @@ const CONFIG = {
   HLS_URL: window.PLAYER_CONFIG?.HLS_URL || "./videos/master.m3u8",
 
   // Quando o backend estiver pronto:
-  VIDEO_ID: window.PLAYER_CONFIG?.VIDEO_ID || "demo-video",
+  VIDEO_ID: window.PLAYER_CONFIG?.VIDEO_ID || VIDEO_DA_URL || "demo-video",
   USER_ID: window.PLAYER_CONFIG?.USER_ID || "demo-user"
 };
 
@@ -70,12 +78,38 @@ let qualityManager = null;
 let controls = null;
 let retryTimer = null;
 
-initialize();
+try {
+  initialize();
+} catch (error) {
+  // Sem isso, um erro de JS deixava a página com o spinner "Carregando vídeo..."
+  // para sempre e nenhuma dica do que aconteceu (nem nos cards, nem no console).
+  console.error("Falha ao iniciar o player:", error);
+  const mensagem = document.querySelector("#playerErrorMessage");
+  const painel = document.querySelector("#playerError");
+  const loading = document.querySelector("#playerLoading");
+  if (mensagem) mensagem.textContent = `Falha ao iniciar o player: ${error.message}`;
+  painel?.classList.remove("hidden");
+  loading?.classList.add("hidden");
+}
 
 function initialize() {
   controls = new PlayerControls(video, elements);
   renderRecommendations(elements.relatedVideos);
   renderSidebar(elements.sidebarVideos);
+
+  // Veio da home (?video=id): busca o metadado e toca exatamente esse vídeo.
+  if (VIDEO_DA_URL) {
+    buscarVideoDaApi(VIDEO_DA_URL).then((video) => {
+      if (video?.hlsUrl) {
+        loadVideo(resolveMediaUrl(video.hlsUrl), video);
+      } else {
+        showError(
+          "Este vídeo ainda não está pronto para reprodução " +
+          "(não foi transcodificado ou não existe mais)."
+        );
+      }
+    });
+  }
 
   // Enhancement progressivo: os cards de demonstração já estão na tela; aqui
   // tentamos trocá-los pelos dados reais da API. Se o backend estiver fora,
@@ -157,7 +191,7 @@ function carregarCatalogo(videoId, { autoSelecionar = true } = {}) {
  *     banco, nada transcodificado ainda) — o player segue com a demonstração.
  */
 function selecionarVideoInicialDaApi(videos) {
-  if (window.PLAYER_CONFIG?.HLS_URL) return;
+  if (window.PLAYER_CONFIG?.HLS_URL || VIDEO_DA_URL) return;
 
   const primeiro = (videos || []).find((video) => video?.hlsUrl);
   if (!primeiro) return;
@@ -234,6 +268,16 @@ function initializeHls(url) {
 
     switch (data.type) {
       case Hls.ErrorTypes.NETWORK_ERROR:
+        if (url === CONFIG.HLS_URL && !window.PLAYER_CONFIG?.HLS_URL && !VIDEO_DA_URL) {
+          // O padrão de dev aponta para ./videos/master.m3u8, que não existe no
+          // repositório: em vez de um loop de retries num 404, explicamos como
+          // publicar vídeos de verdade (home + script de demo).
+          showError(
+            "Nenhum vídeo carregado ainda. Abra a home (home.html) e escolha um " +
+            "vídeo, ou publique vídeos de teste com: python scripts/demo_completo.py"
+          );
+          return;
+        }
         showError("Falha de rede ao carregar o vídeo. Tentando novamente...");
         retryTimer = setTimeout(() => loadVideo(url), 3000);
         break;
