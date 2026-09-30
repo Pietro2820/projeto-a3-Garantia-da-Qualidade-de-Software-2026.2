@@ -7,12 +7,9 @@ import {
 } from "./recommendations.js";
 
 const CONFIG = {
-  // Durante o desenvolvimento, troque por um master.m3u8 real.
-  // Exemplo local:
-  // HLS_URL: "http://localhost:8000/videos/UUID/master.m3u8"
-  HLS_URL: window.PLAYER_CONFIG?.HLS_URL || "./videos/master.m3u8",
+  // URL de teste HLS pública e funcional para testares o Play imediatamente:
+  HLS_URL: window.PLAYER_CONFIG?.HLS_URL || "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8",
 
-  // Quando o backend estiver pronto:
   VIDEO_ID: window.PLAYER_CONFIG?.VIDEO_ID || "demo-video",
   USER_ID: window.PLAYER_CONFIG?.USER_ID || "demo-user"
 };
@@ -241,4 +238,25 @@ window.eduStreamPlayer = {
   destroy: destroyHls,
   getHls: () => hls,
   getQualityManager: () => qualityManager
+}
+
+async function fetchVideoFromSupabase(videoId) {
+  try {
+    // Exemplo de requisição para a API do backend/Supabase
+    const response = await fetch(`https://SEU-PROJETO.supabase.co/rest/v1/videos?id=eq.${videoId}`, {
+      headers: {
+        'apikey': 'SUA_SUPABASE_ANON_KEY',
+        'Authorization': 'Bearer SUA_SUPABASE_ANON_KEY'
+      }
+    });
+    
+    const data = await response.json();
+    if (data && data.length > 0) {
+      const videoData = data[0];
+      // Carrega o vídeo retornado pelo Supabase
+      loadVideo(videoData.hls_url, videoData);
+    }
+  } catch (error) {
+    console.error("Erro ao buscar vídeo do Supabase:", error);
+  }
 };
