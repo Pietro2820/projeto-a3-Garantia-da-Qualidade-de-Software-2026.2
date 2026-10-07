@@ -21,6 +21,7 @@ Fluxo de desenvolvimento (Passo 2 do guia individual — começar SIMPLES):
 from __future__ import annotations
 
 import json
+import logging
 import shutil
 import subprocess
 from pathlib import Path
@@ -40,6 +41,8 @@ from app.transcoding.errors import (
     TranscodingError,
     VideoInvalidoError,
 )
+
+logger = logging.getLogger(__name__)
 
 # Argumentos comuns a todo comando ffmpeg: sem banner, sem estatísticas de
 # progresso e log só de erros — em worker de fila, saída limpa importa.
@@ -346,6 +349,15 @@ def transcodificar(
         TranscodingError: qualquer falha do FFmpeg no meio do caminho.
     """
     entrada = _validar_entrada(caminho_original)
+
+    # Duração real do vídeo (ffprobe). Vai para o banco junto com o status
+    # "completed": sem ela o card do player ficava sem o selo de duração.
+    try:
+        duracao = duracao_video(entrada)
+    except TranscodingError:
+        logger.warning("Não foi possível medir a duração de '%s'", entrada)
+        duracao = None
+
     escada = ladder() if resolucoes is None else sorted(resolucoes, key=lambda r: r.altura)
     if not escada:
         raise TranscodingError("Nenhuma resolução informada para transcodificar")
@@ -386,4 +398,5 @@ def transcodificar(
         "master_playlist": master.as_posix(),
         "playlists": playlists,
         "thumbnail": thumbnail.as_posix() if thumbnail else None,
+        "duracao_segundos": round(duracao, 3) if duracao is not None else None,
     }

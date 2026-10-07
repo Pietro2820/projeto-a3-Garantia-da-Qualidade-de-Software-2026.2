@@ -34,6 +34,13 @@ create table if not exists public.videos (
                check (status in ('pending', 'processing', 'completed', 'failed'))
 );
 
+-- Duração real do vídeo em segundos, medida pelo ffprobe na transcodificação e
+-- gravada pelo worker junto com o status 'completed'. O player formata como
+-- selo de duração no card (12:32). NULL enquanto o vídeo não foi processado.
+-- Idempotente: pode rodar de novo sem erro.
+alter table public.videos
+    add column if not exists duracao_segundos double precision;
+
 -- Catálogo do player filtra por status e ordena por criação: índices baratos
 -- que evitam scan completo quando o catálogo crescer.
 create index if not exists videos_status_idx    on public.videos (status);

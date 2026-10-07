@@ -529,3 +529,49 @@ def test_catalogo_nao_quebra_sem_o_contador_de_views(api, views):
     assert resposta.status_code == 200
     assert len(resposta.json()["videos"]) == 4
     assert all(item["views"] == 0 for item in resposta.json()["videos"])
+
+
+# ---------------------------------------------------------------------------
+# Duração do vídeo (medida pelo ffprobe na transcodificação, gravada no banco)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize(
+    "segundos,esperado",
+    [
+        (None, ""),
+        (0, ""),
+        (-3, ""),
+        ("abc", ""),
+        (5, "0:05"),
+        (65, "1:05"),
+        (612.4, "10:12"),
+        (3599, "59:59"),
+        (3600, "1:00:00"),
+        (3725, "1:02:05"),
+    ],
+)
+def test_formatar_duracao(segundos, esperado):
+    assert modulo_router.formatar_duracao(segundos) == esperado
+
+
+def test_catalogo_devolve_duracao_formatada(api, banco):
+    banco["videos"]["v-fra"]["duracao_segundos"] = 754.2
+
+    item = client.get("/catalogo/v-fra").json()
+
+    assert item["duracao"] == "12:34"
+    assert item["duracao_segundos"] == 754.2
+
+
+def test_catalogo_sem_duracao_nao_inventa_valor(api):
+    item = client.get("/catalogo/v-fra").json()
+
+    assert "duracao" not in item or item["duracao"] == ""
+
+
+def test_lista_do_catalogo_tambem_traz_duracao(api, banco):
+    banco["videos"]["v-geo"]["duracao_segundos"] = 3725
+
+    itens = {item["video_id"]: item for item in client.get("/catalogo").json()["videos"]}
+
+    assert itens["v-geo"]["duracao"] == "1:02:05"

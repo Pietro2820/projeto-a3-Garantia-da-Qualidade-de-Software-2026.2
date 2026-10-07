@@ -5,18 +5,111 @@
  * ruim para a apresentação. Agora a home tem o botão "Enviar vídeo":
  *
  *   1. o formulário monta um FormData e chama POST /upload (multipart);
- *   2. com o video_id da resposta, acompanha GET /status/{id} em polling
- *      (pending → processing → completed), mostrando o progresso no modal;
+ *   2. com o video_id da resposta, acompanha o processamento — por SSE
+ *      (GET /status/{id}/stream) quando disponível, senão em polling de
+ *      GET /status/{id} — mostrando o progresso no modal;
  *   3. quando completa, avisa `onSucesso` (a home recarrega o catálogo e o
  *     card do vídeo novo aparece na grade).
  *
  * Erros (extensão inválida, título vazio, banco fora) chegam como mensagem
  * legível dentro do modal — o detail JSON da API, não um stacktrace.
  */
-import { getVideoStatus, uploadVideo } from "./api.js";
+import { API_BASE_URL, getVideoStatus, uploadVideo } from "./api.js";
 
 const INTERVALO_PADRAO_MS = 2000;
 const TIMEOUT_PADRAO_MS = 10 * 60 * 1000;
+
+/** O navegador tem EventSource? (SSE — sem ele, voltamos ao polling.) */
+function sseDisponivel() {
+  return typeof window !== "undefined" && typeof window.EventSource === "function";
+}
+
+/**
+ * Acompanha o processamento por Server-Sent Events (GET /status/{id}/stream).
+ *
+ * Por que SSE e não polling: a transcodificação dura de segundos a minutos e o
+ * modal ficava batendo em /status a cada 2s. Com o stream o servidor avisa na
+ * hora em que o estado muda (e encerra sozinho no completed/failed).
+ *
+ * Devolve uma promise que resolve com o status final ou rejeita com o erro —
+ * exatamente o contrato de `aguardarProcessamento`, então quem chama não
+ * precisa saber qual transporte foi usado.
+ */
+export function acompanharPorStream(
+  videoId,
+  { onStatus, timeoutMs = TIMEOUT_PADRAO_MS } = {}
+) {
+  return new Promise((resolver, rejeitar) => {
+    const origem = API_BASE_URL.replace(/\/$/, "");
+    const fonte = new window.EventSource(
+      `${origem}/status/${encodeURIComponent(videoId)}/stream`
+    );
+
+    let ultimo = null;
+    let encerrou = false;
+
+    const finalizar = (fn, valor) => {
+      if (encerrou) return;
+      encerrou = true;
+      clearTimeout(limite);
+      fonte.close();
+      fn(valor);
+    };
+
+    const limite = setTimeout(
+      () => finalizar(rejeitar, new Error(
+        `Tempo esgotado (${Math.round(timeoutMs / 1000)}s) aguardando a transcodificação`
+      )),
+      timeoutMs
+    );
+
+    fonte.onmessage = (evento) => {
+      let payload = null;
+      try {
+        payload = JSON.parse(evento.data);
+      } catch (error) {
+        return; // quadro de keep-alive/comentário: ignora
+      }
+
+      if (!payload || payload.status === "unknown") return;
+
+      if (payload.status !== ultimo) {
+        ultimo = payload.status;
+        onStatus?.(payload);
+      }
+
+      if (payload.status === "completed") finalizar(resolver, payload);
+      if (payload.status === "failed") {
+        finalizar(rejeitar, new Error(payload.erro || "A transcodificação falhou no servidor"));
+      }
+      if (payload.evento === "timeout") {
+        finalizar(rejeitar, new Error("O servidor encerrou o acompanhamento antes de concluir"));
+      }
+    };
+
+    // Conexão caiu (proxy, backend reiniciou): rejeita para o chamador poder
+    // cair no polling em vez de ficar esperando um stream morto.
+    fonte.onerror = () => finalizar(rejeitar, new Error("stream-indisponivel"));
+  });
+}
+
+/**
+ * SSE com rede de segurança: se o stream não estiver disponível (navegador sem
+ * EventSource, proxy que bufferiza, backend antigo sem a rota), volta ao
+ * polling de GET /status/{id} — o comportamento que o modal já tinha.
+ */
+export async function acompanharProcessamento(videoId, opcoes = {}) {
+  if (sseDisponivel()) {
+    try {
+      return await acompanharPorStream(videoId, opcoes);
+    } catch (error) {
+      if (error.message !== "stream-indisponivel") throw error;
+      console.info("Stream de status indisponível, voltando ao polling:", error.message);
+    }
+  }
+
+  return aguardarProcessamento(videoId, opcoes);
+}
 
 /**
  * Polling de /status/{video_id} até completed/failed.
@@ -60,7 +153,7 @@ export async function enviarEAcompanhar(formData, callbacks = {}, opcoes = {}) {
   callbacks.onEnviando?.();
   const corpo = await uploadVideo(formData);
   callbacks.onProcessando?.(corpo);
-  const status = await aguardarProcessamento(corpo.video_id, {
+  const status = await acompanharProcessamento(corpo.video_id, {
     onStatus: callbacks.onStatus,
     ...opcoes,
   });

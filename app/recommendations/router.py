@@ -87,6 +87,29 @@ def _views_seguras(video_id: str) -> int:
         return 0
 
 
+def formatar_duracao(segundos) -> str:
+    """Segundos → "5:00" / "1:02:03" (o selo de duração do card do player).
+
+    A duração é medida pelo ffprobe na transcodificação e gravada no banco
+    (`duracao_segundos`); o player só exibe. None/0/inválido → "" (o card fica
+    sem selo, em vez de mostrar "0:00" mentiroso).
+    """
+    try:
+        total = int(round(float(segundos)))
+    except (TypeError, ValueError):
+        return ""
+
+    if total <= 0:
+        return ""
+
+    horas, resto = divmod(total, 3600)
+    minutos, segundos = divmod(resto, 60)
+
+    if horas:
+        return f"{horas}:{minutos:02d}:{segundos:02d}"
+    return f"{minutos}:{segundos:02d}"
+
+
 def _url_absoluta(request: Request | None, caminho: str) -> str:
     """Transforma '/videos/x/master.m3u8' em URL absoluta usando a origem da
     requisição (ex: 'http://localhost:8000/videos/x/master.m3u8').
@@ -114,11 +137,15 @@ def _enriquecer(video: dict, score: float | None = None,
     """
     video_id = video.get("video_id")
     pronta = master_existe(video_id) if video_id else False
+    duracao = video.get("duracao_segundos", video.get("duracaoSegundos"))
     resposta = {
         **video,
         "tags": normalizar_tags(video.get("tags")),
         "views": _views_seguras(video_id) if video_id else 0,
         "media_pronta": pronta,
+        # O player procura `duracao` (texto pronto para o card). Só sobrescreve
+        # quando o banco tem a duração medida — senão mantém o que vier.
+        **({"duracao": formatar_duracao(duracao)} if formatar_duracao(duracao) else {}),
         "hls_url": (
             _url_absoluta(request, f"/videos/{video_id}/master.m3u8")
             if video_id else None

@@ -138,3 +138,27 @@ def test_criar_video_sem_supabase_usa_o_banco_local(sem_supabase):
 
     assert registro["titulo"] == "Nova aula"
     assert local_store.buscar(registro["video_id"]) is not None
+
+
+# ---------------------------------------------------------------------------
+# atualizar_campos — merge parcial (usado pelo worker ao concluir)
+# ---------------------------------------------------------------------------
+
+def test_atualizar_campos_faz_merge(monkeypatch, tmp_path):
+    monkeypatch.setenv("LOCAL_DB_PATH", str(tmp_path / "banco.json"))
+    local_store.inserir({"video_id": "v1", "titulo": "Aula", "status": "processing"})
+
+    resultado = local_store.atualizar_campos(
+        "v1", {"status": "completed", "duracao_segundos": 612.4}
+    )
+
+    assert resultado["titulo"] == "Aula"          # campos antigos preservados
+    assert resultado["status"] == "completed"
+    assert resultado["duracao_segundos"] == 612.4
+    assert local_store.buscar("v1")["duracao_segundos"] == 612.4
+
+
+def test_atualizar_campos_de_video_inexistente_devolve_none(monkeypatch, tmp_path):
+    monkeypatch.setenv("LOCAL_DB_PATH", str(tmp_path / "banco.json"))
+
+    assert local_store.atualizar_campos("fantasma", {"status": "completed"}) is None

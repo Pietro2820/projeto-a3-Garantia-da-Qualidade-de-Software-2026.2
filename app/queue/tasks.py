@@ -1,6 +1,6 @@
 import logging
 
-from app.database.videos import atualizar_status
+from app.database.videos import atualizar_status, atualizar_video
 from app.queue.celery_app import celery_app
 from app.queue.status_store import set_status
 from app.transcoding import processar  # módulo do João
@@ -8,18 +8,24 @@ from app.transcoding import processar  # módulo do João
 logger = logging.getLogger(__name__)
 
 
-def _sincronizar_banco(video_id: str, status: str) -> None:
-    """Reflete o status no banco (Supabase ou fallback local).
+def _sincronizar_banco(video_id: str, status: str, campos: dict | None = None) -> None:
+    """Reflete o status (e campos extras) no banco (Supabase ou fallback local).
 
     O Redis alimenta o /status em tempo real, mas o CATÁLOGO (e portanto as
     recomendações, o /trending e os cards do player) lê do banco filtrando
     status='completed'. Sem esta sincronização o vídeo transcodificava, o
     /status dizia "completed", mas ele nunca aparecia no frontend.
 
+    `campos` carrega o que só a transcodificação sabe — hoje `duracao_segundos`,
+    que o player exibe como selo de duração no card.
+
     Falha aqui não pode derrubar a task: loga e segue (o Redis já tem o status).
     """
     try:
-        atualizar_status(video_id, status)
+        if campos:
+            atualizar_video(video_id, {"status": status, **campos})
+        else:
+            atualizar_status(video_id, status)
     except Exception as exc:
         logger.warning(
             "Não foi possível atualizar o status de %s para '%s' no banco: %s",
@@ -80,7 +86,14 @@ def transcodificar_video(self, video_id: str, caminho_original: str):
 
     # status == "completed"
     set_status(video_id, "completed", {"caminho_hls": resultado["caminho_hls"]})
-    _sincronizar_banco(video_id, "completed")
+
+    # A duração vem medida pelo ffprobe na transcodificação (contrato #3).
+    # Sem ela o card do player não tem como mostrar "12:32".
+    campos = {}
+    if resultado.get("duracao_segundos") is not None:
+        campos["duracao_segundos"] = resultado["duracao_segundos"]
+
+    _sincronizar_banco(video_id, "completed", campos)
     return resultado
 
 

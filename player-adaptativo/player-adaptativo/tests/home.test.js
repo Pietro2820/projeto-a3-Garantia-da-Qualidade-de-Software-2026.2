@@ -18,6 +18,8 @@ const V1 = {
   video_id: "v1",
   titulo: "Frações — introdução",
   views: 3,
+  duracao: "10:12",
+  media_pronta: true,
   hls_url: "http://localhost:8000/videos/v1/master.m3u8",
   thumbnail_url: "http://localhost:8000/videos/v1/thumbnail.jpg",
 };
@@ -104,6 +106,24 @@ describe("home — grade do catálogo", () => {
 
     const img = document.querySelector("#homeGrid img");
     expect(img.getAttribute("src")).toBe(V1.thumbnail_url);
+  });
+
+  test("o card mostra a duração que o backend mediu (duracao)", async () => {
+    mockarCatalogo([V1]);
+
+    await subirHome();
+
+    expect(document.querySelector("#homeGrid .thumbnail-duration").textContent).toBe("10:12");
+  });
+
+  test("card de vídeo sem thumbnail usa a imagem padrão (sem ícone quebrado)", async () => {
+    mockarCatalogo([{ ...V1, thumbnail_url: "" }]);
+
+    await subirHome();
+
+    const img = document.querySelector("#homeGrid img");
+    expect(img.getAttribute("src")).toContain("default-thumbnail.svg");
+    expect(img.getAttribute("onerror")).toContain("default-thumbnail.svg");
   });
 
   test("catálogo vazio mostra o estado vazio com o passo a passo da demo", async () => {

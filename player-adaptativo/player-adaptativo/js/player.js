@@ -37,6 +37,8 @@ import {
 } from "./catalog.js";
 import { API_BASE_URL, getMedia, getVideoStatus, resolveMediaUrl } from "./api.js";
 import { definirParametro } from "./busca.js";
+import { iniciarPerfil } from "./perfil.js";
+import { usuarioAtual } from "./usuario.js";
 
 // index.html?video={id} — é assim que a home (home.html) abre um vídeo.
 const PARAMS = new URLSearchParams(window.location.search);
@@ -47,7 +49,9 @@ const CONFIG = {
   // do catálogo da API — que lê do banco (Supabase ou data/videos.json).
   HLS_URL: window.PLAYER_CONFIG?.HLS_URL || "",
   VIDEO_ID: window.PLAYER_CONFIG?.VIDEO_ID || VIDEO_DA_URL || "",
-  USER_ID: window.PLAYER_CONFIG?.USER_ID || "demo-user"
+  // Identidade de quem assiste (nome salvo no navegador, ou anônimo estável).
+  // Não é mais constante: o menu de perfil troca em tempo de execução.
+  USER_ID: usuarioAtual()
 };
 
 /** Quantas tentativas automáticas antes de desistir e explicar o problema. */
@@ -116,6 +120,7 @@ function initialize() {
   renderRecommendations(elements.relatedVideos);
   renderSidebar(elements.sidebarVideos);
   ligarBusca();
+  iniciarPerfil({ aoTrocarUsuario: (novoId) => { CONFIG.USER_ID = novoId; } });
 
   elements.qualitySelect.addEventListener("change", (event) => {
     try {
