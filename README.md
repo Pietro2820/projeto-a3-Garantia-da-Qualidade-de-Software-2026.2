@@ -170,10 +170,16 @@ O projeto Supabase já existe — com ele configurado, **todo o time e o player 
 Com a API no ar (`uvicorn app.main:app --reload`), o backend **também serve o player** — não precisa de outro servidor:
 
 ```
-http://localhost:8000/player/     ← frontend (player adaptativo)
-http://localhost:8000/docs        ← documentação da API (Swagger)
-http://localhost:8000/videos/...  ← HLS (master.m3u8, segmentos) e thumbnails
+http://localhost:8000/player/home.html  ← home (catálogo que vem do banco)
+http://localhost:8000/player/           ← watch page (toca o 1º vídeo pronto)
+http://localhost:8000/docs              ← documentação da API (Swagger)
+http://localhost:8000/videos/...        ← HLS (master.m3u8, segmentos) e thumbnails
 ```
+
+> O player **não tem URL de vídeo no JavaScript**: ele pergunta à API, que lê o
+> banco (Supabase ou `data/videos.json`) e devolve o `hls_url` de cada vídeo +
+> `media_pronta` (se o master.m3u8 existe mesmo no disco). Sem isso o player
+> tentava reproduzir vídeos sem arquivo HLS e ficava num loop de retry em 404.
 
 ### Demo completa de ponta a ponta (recomendado)
 
@@ -203,7 +209,9 @@ POST /upload ──► grava arquivo + metadados (Supabase ou JSON local)
                      └─► transcodificar_video (FFmpeg → HLS em videos/{id}/)
                              └─► status completed no Redis E no banco
 GET /status/{id} ──► pending → processing → completed   (polling do front)
-GET /catalogo, /trending, /videos/{id}/relacionados ──► home + cards do player
+GET /media/{id} ───► master.m3u8/thumbnail/segmentos existem no disco?
+GET /catalogo?prontos=1, /trending, /videos/{id}/relacionados ──► home + cards
+GET /catalogo/{id} ──► watch page (index.html?video={id})
 GET /videos/{id}/master.m3u8 ──► HLS.js toca o vídeo adaptativo
 POST /watch ──► alimenta o ranking e as recomendações do usuário
 ```
@@ -248,6 +256,17 @@ resultado.get(timeout=10)
 
 Se tudo estiver certo, isso retorna `'pong'` e o terminal do worker (seja o log do `docker compose up` ou o terminal local) mostra a task sendo recebida e concluída (`received` → `succeeded`).
 
+## O vídeo não toca? Um comando diz onde está o problema
+
+```bash
+python scripts/verificar_player.py
+```
+
+Ele confere, em ordem: API no ar → vídeos `completed` no banco → quais têm
+`master.m3u8` no disco (`media_pronta`) → a playlist sendo servida com o
+Content-Type certo → home e watch page acessíveis. É o mesmo diagnóstico que o
+player faz na tela quando o play falha.
+
 ## Problemas comuns
 
 | Erro | Causa provável | Solução |
@@ -261,6 +280,9 @@ Se tudo estiver certo, isso retorna `'pong'` e o terminal do worker (seja o log 
 | O player só mostra os vídeos de demonstração (cards fixos) | A API não está no ar, ou nenhum vídeo foi transcodificado ainda (o catálogo real vem do `/trending` + `/relacionados`) | Suba a API (`uvicorn app.main:app`) e rode `python scripts/demo_completo.py`; abra o console do navegador (F12) para ver os motivos de fallback |
 | Player aberto via Live Server não fala com a API | O front está em outra origem (ex: `:5500`) | Já resolvido: a API tem CORS liberado em dev e o `config.js` aponta para `http://localhost:8000`. Confira se o backend está rodando |
 | Vídeo tocando mas sem imagem / 404 no `.m3u8` | O arquivo HLS não existe em `videos/{id}/` (transcodificação não terminou ou falhou) | Consulte `GET /status/{video_id}`; se estiver `failed`, veja o log do worker Celery (FFmpeg instalado?) |
+| O player diz "os arquivos HLS não foram encontrados" | Vídeo `completed` no banco, mas a pasta `videos/{id}/` não tem `master.m3u8` (ela não vai para o git — é gerada localmente) | `GET /media/{video_id}` mostra o que existe no disco; rode `python scripts/demo_completo.py` ou reenvie o vídeo pela home |
+| A home está vazia, mas o `/catalogo` tem vídeos | Todos estão sem mídia (`prontos=1` filtra) ou com status diferente de `completed` | `GET /catalogo` (sem filtro) mostra todos; confira `media_pronta` de cada um |
+| "A API não respondeu em http://localhost:8000" | Backend fora do ar, ou o front aberto em outra origem sem CORS | Suba `uvicorn app.main:app --reload`; se usar Live Server, confira o `API_BASE_URL` do `config.js` |
 
 ## Estrutura de pastas
 
@@ -276,11 +298,14 @@ projeto-a3/
 │   ├── status/                    # GET /status/{video_id} (Redis, fallback banco)
 │   └── database/                  # Supabase + fallback local (data/videos.json)
 ├── player-adaptativo/player-adaptativo/   # Frontend (HLS.js, servido em /player/)
-│   ├── index.html                 # Página do player
+│   ├── home.html                  # Catálogo (grade + busca + upload)
+│   ├── index.html                 # Página do player (watch page)
 │   ├── config.js                  # Origem da API (mesma origem ou localhost:8000)
-│   └── js/                        # api.js, catalog.js, player.js, quality.js, ...
+│   └── js/                        # api.js, catalog.js, player.js, home.js, ...
 ├── scripts/
 │   ├── demo_completo.py           # Demo E2E: upload → fila → HLS → trending
+│   ├── seed_e2e.py                # Cenário de teste do player (sem Redis/worker)
+│   ├── verificar_player.py        # Diagnóstico: API + banco + mídia + páginas
 │   └── gerar_video_teste.py       # Vídeo sintético via FFmpeg
 ├── uploads/                       # arquivos originais (dev local, fora do git)
 ├── videos/                        # HLS processado (dev local, fora do git)

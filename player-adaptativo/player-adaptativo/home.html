@@ -64,16 +64,19 @@
 
     <div class="video-grid home-grid" id="homeGrid"></div>
 
+    <!-- Preenchido por js/home.js: o texto muda conforme o motivo do vazio
+         (API fora do ar x catálogo sem vídeos x busca sem resultado). -->
     <div class="empty-state hidden" id="homeEmpty">
-      <strong>Nenhum vídeo pronto para assistir ainda.</strong>
-      <p>
-        Os vídeos aparecem aqui depois de serem transcodificados pelo backend.
-        Para publicar vídeos de teste agora (API + Redis + worker no ar):
-      </p>
-      <p><code>python scripts/demo_completo.py</code></p>
-      <p class="empty-hint">
-        Se a API estiver fora do ar, suba primeiro: <code>uvicorn app.main:app</code>
-      </p>
+      <strong id="homeEmptyTitle">Nenhum vídeo pronto para assistir ainda.</strong>
+      <div id="homeEmptyDetails">
+        <p>
+          Os vídeos aparecem aqui depois de enviados e transcodificados pelo backend
+          (botão <strong>Enviar vídeo</strong>, no topo da página). Para publicar
+          vídeos de teste agora (API + Redis + worker no ar):
+        </p>
+        <p><code>python scripts/demo_completo.py</code></p>
+      </div>
+      <p class="empty-hint" id="homeEmptyHint"></p>
     </div>
   </main>
 

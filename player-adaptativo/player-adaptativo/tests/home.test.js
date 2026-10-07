@@ -116,15 +116,19 @@ describe("home — grade do catálogo", () => {
     expect(vazio.textContent).toContain("demo_completo.py");
   });
 
-  test("backend fora do ar não quebra a página (estado vazio)", async () => {
+  test("backend fora do ar não quebra a página (estado vazio explicativo)", async () => {
     global.fetch = jest.fn(async () => {
       throw new TypeError("Failed to fetch");
     });
 
     await subirHome();
 
-    expect(document.querySelector("#homeEmpty").classList.contains("hidden")).toBe(false);
+    const vazio = document.querySelector("#homeEmpty");
+    expect(vazio.classList.contains("hidden")).toBe(false);
     expect(document.querySelectorAll("#homeGrid a.home-card")).toHaveLength(0);
+    // Diz qual origem tentou e o que fazer — não apenas "lista vazia".
+    expect(vazio.textContent).toContain("API não respondeu");
+    expect(vazio.textContent).toContain("uvicorn app.main:app");
   });
 });
 
@@ -139,7 +143,8 @@ describe("home — busca", () => {
       .dispatchEvent(new Event("submit", { cancelable: true }));
     await flush();
 
-    expect(String(fetchMock.mock.calls.at(-1)[0])).toContain("/catalogo?q=fra");
+    // prontos=1: a home só lista o que já tem master.m3u8 no disco (dá play).
+    expect(String(fetchMock.mock.calls.at(-1)[0])).toContain("/catalogo?prontos=1&q=fra");
     expect(document.querySelector("#homeTitle").textContent).toContain("fra");
     expect(document.querySelectorAll("#homeGrid a.home-card")).toHaveLength(1);
   });
