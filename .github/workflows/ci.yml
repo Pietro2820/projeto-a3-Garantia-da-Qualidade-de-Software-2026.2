@@ -93,6 +93,41 @@ jobs:
       - name: Instalar dependências
         run: npm ci
 
+      - name: Configurar Python (para o teste E2E subir a API)
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+          cache-dependency-path: ${{ github.workspace }}/requirements.txt
+
+      - name: Instalar dependências do backend
+        working-directory: ${{ github.workspace }}
+        run: pip install -r requirements.txt
+
+      # Integração de verdade: sobe o FastAPI, publica o cenário de teste
+      # (scripts/seed_e2e.py) e roda o Jest contra ele. Sem a API no ar a suíte
+      # E2E se auto-ignora — por isso o "Rodar testes" acima continua valendo
+      # como rede de segurança.
+      - name: Teste E2E do player contra a API real
+        working-directory: ${{ github.workspace }}
+        run: |
+          python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 &
+          API_PID=$!
+          for i in $(seq 1 30); do
+            if curl -sf http://127.0.0.1:8000/ >/dev/null; then break; fi
+            sleep 1
+          done
+          curl -sf http://127.0.0.1:8000/ >/dev/null || { echo "API não subiu"; exit 1; }
+
+          python scripts/seed_e2e.py
+
+          cd player-adaptativo/player-adaptativo
+          E2E_API_URL=http://127.0.0.1:8000 npm test -- tests/e2e.player-api.test.js
+          STATUS=$?
+
+          kill $API_PID 2>/dev/null || true
+          exit $STATUS
+
       - name: Rodar testes (Jest) com cobertura
         run: npm test -- --coverage
 

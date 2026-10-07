@@ -120,7 +120,9 @@ describe("renderRecommendations", () => {
     });
     container.querySelector("article").click();
 
-    expect(recebido).toEqual(VIDEOS[0]);
+    // `pronta` é calculado no clique (é o que o player usa para decidir entre
+    // dar play e explicar por que o vídeo não tem stream).
+    expect(recebido).toEqual({ ...VIDEOS[0], pronta: false });
   });
 });
 
