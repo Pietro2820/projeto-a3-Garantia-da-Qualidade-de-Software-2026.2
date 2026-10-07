@@ -18,6 +18,7 @@ import { escapeHtml } from "./recommendations.js";
 import { iniciarUiUpload } from "./upload.js";
 import { API_BASE_URL } from "./api.js";
 import { definirParametro, parametro } from "./busca.js";
+import { iniciarPerfil } from "./perfil.js";
 
 /** Thumbnail padrão quando o vídeo não tem (ou a dele dá 404 no servidor). */
 const THUMBNAIL_PADRAO = "./assets/default-thumbnail.svg";
@@ -132,6 +133,9 @@ elements.searchInput.addEventListener("input", () => {
 function atualizarUrlDaBusca(termo) {
   definirParametro("q", termo);
 }
+
+// Menu de perfil (👤): identidade usada no POST /watch e recomendações.
+iniciarPerfil();
 
 // Upload pela interface: quando a transcodificação completa, recarrega a
 // grade para o card do vídeo novo aparecer (mantendo o termo da busca).

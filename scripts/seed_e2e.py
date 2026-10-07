@@ -29,7 +29,7 @@ sys.path.insert(0, str(RAIZ))
 
 from app import media  # noqa: E402  (import depois do sys.path)
 from app.database import local_store  # noqa: E402
-from app.database.videos import buscar_video, inserir_video  # noqa: E402
+from app.database.videos import atualizar_video, buscar_video, inserir_video  # noqa: E402
 
 VIDEOS = [
     {
@@ -40,12 +40,17 @@ VIDEOS = [
         "categoria": "Matemática",
         "autor": "Rafael",
         "status": "completed",
+        # Em produção quem grava isto é o worker (ffprobe na transcodificação).
+        # Aqui vai fixo para o teste E2E poder afirmar o selo de duração do card.
+        "duracao_segundos": 612.0,
     },
     {
         "video_id": "v-completed-sem-arquivo",
         "titulo": "Concluído sem arquivo HLS (E2E)",
-        "descricao": "Metadado diz completed, mas não há master.m3u8 — o player "
-                      "precisa explicar em vez de ficar repetindo um 404.",
+        "descricao": (
+            "Metadado diz completed, mas não há master.m3u8 — o player precisa "
+            "explicar em vez de ficar repetindo um 404."
+        ),
         "tags": ["teste", "e2e"],
         "categoria": "QA",
         "autor": "Pedro",
@@ -107,7 +112,11 @@ def publicar() -> None:
             inserir_video(dict(video))
             print(f"  + metadado {video['video_id']} ({video['status']})")
         else:
-            print(f"  = metadado {video['video_id']} já existia")
+            # Já existia: atualiza os campos do cenário (status/duração). Sem
+            # isso, rodar o seed duas vezes deixaria o banco com valores velhos.
+            campos = {campo: valor for campo, valor in video.items() if campo != "video_id"}
+            atualizar_video(video["video_id"], campos)
+            print(f"  = metadado {video['video_id']} atualizado ({video['status']})")
 
     if gerar_hls_com_ffmpeg("v-pronto"):
         print("  + HLS real gerado com FFmpeg para v-pronto")

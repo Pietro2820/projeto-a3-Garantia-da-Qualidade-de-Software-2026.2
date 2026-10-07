@@ -32,12 +32,19 @@ Módulo `feature/player-adaptativo` da plataforma de streaming de vídeo educaci
   ar) em vez de ficar repetindo a requisição.
 - Tentativas de rede limitadas (3) — sem loop infinito de retry em 404.
 - Busca funcional nas duas páginas (`home.html?q=...` ⇄ `index.html?video=...`).
+- Menu de perfil (👤): identifica quem assiste (nome em `localStorage`, ou
+  anônimo estável) e lista as recomendações personalizadas de
+  `GET /recomendacoes/{user_id}`.
+- Selo de duração no card vindo do banco (`duracao_segundos`, medido pelo
+  ffprobe na transcodificação) e thumbnail padrão quando a do vídeo não existe.
+- Upload acompanhado por **SSE** (`GET /status/{id}/stream`), com volta
+  automática ao polling se o stream não estiver disponível.
 
 ## Testes automatizados
 
 ```bash
 npm install     # primeira vez
-npm test        # 237 testes (Jest + jsdom)
+npm test        # 266 testes (Jest + jsdom)
 npm test -- --coverage
 ```
 
@@ -66,6 +73,8 @@ npm test -- tests/e2e.player-api.test.js
 | `tests/recommendations.render.test.js` | renderização dos cards e escaping de HTML (XSS) |
 | `tests/player.bootstrap.test.js` | carrega o `index.html` real e verifica que a página sobe |
 | `tests/vendor.test.js` | HLS.js local: hash fixado, licença, e que a lib carrega sem internet |
+| `tests/usuario.test.js` · `perfil.test.js` | identidade do usuário (localStorage, anônimo estável, storage bloqueado) e o menu 👤 |
+| `tests/upload-stream.test.js` | acompanhamento por SSE e o fallback para polling |
 | `tests/player.resiliencia.test.js` | 404 sem loop de retry, vídeo transcodificando, limite de tentativas de rede, card sem stream, `/watch` só para vídeo real |
 | `tests/config-real.test.js` | evalua o `config.js` e o `vendor/hls.min.js` **de verdade** (pega erro de sintaxe/config que os dublês escondem) |
 | `tests/config-outra-origem.test.js` | `config.js` com o front em `:5500` (Live Server) apontando a API para `:8000` |
@@ -118,6 +127,10 @@ uvicorn app.main:app --reload
 | 3 | `PLAYER_CONFIG.HLS_URL` (config.js) | só para testar o player isolado do backend |
 | 4 | primeiro vídeo de `GET /catalogo?prontos=1` | abertura direta de `/player/` |
 
+`USER_ID` (quem assiste, enviado no `POST /watch`) vem de `js/usuario.js`: o
+nome salvo no menu 👤, ou `PLAYER_CONFIG.USER_ID`, ou um anônimo estável por
+navegador.
+
 Em todos os casos quem diz a URL do stream é a **API**, que monta
 `videos/{video_id}/master.m3u8` a partir do registro do banco (Supabase ou
 `data/videos.json`) e ainda informa `media_pronta` — se o arquivo HLS existe
@@ -152,6 +165,8 @@ acompanha o `GET /status/{id}` até concluir).
 O backend do projeto possui os seguintes contratos documentados:
 
 - `GET /status/{video_id}` — pending · processing · completed · failed
+- `GET /status/{video_id}/stream` — **novo**: o mesmo progresso via SSE (usado
+  pelo modal de upload; o front cai em polling se não houver EventSource)
 - `GET /media/{video_id}` — **novo**: `media_pronta`, `master_playlist`,
   `thumbnail`, `segmentos` (o que existe no disco para o vídeo)
 - `GET /catalogo?q=&prontos=1` — **novo**: grade da home; `prontos=1` filtra os
@@ -201,12 +216,15 @@ Já feitas:
 
 Faltando:
 
-1. Adicionar autenticação quando o backend estiver definido (hoje o `USER_ID` é
-   fixo no `config.js`).
-2. Duração real do vídeo no card (o backend ainda não grava `duracao`; o
-   FFmpeg sabe o valor — vale persistir na transcodificação).
-3. Trocar o polling de `/status` por WebSocket/SSE quando houver notificação
-   em tempo real (`notificar_status` já existe como placeholder no Celery).
+1. Autenticação de verdade (login/sessão). Hoje a identidade é local:
+   `js/usuario.js` guarda o nome no navegador e gera um anônimo estável — para
+   trocar por login, basta fazer `usuarioAtual()` devolver o id da sessão.
+2. Publicar as thumbnails no fluxo de upload (o FFmpeg já gera
+   `thumbnail.jpg`; em produção, com `ENABLE_S3=true`, elas vão para o bucket e
+   o card cai na imagem padrão).
+3. Notificação push do fim do processamento (o SSE cobre o upload feito pela
+   própria página; falta avisar outras abas — `notificar_status` já existe como
+   placeholder no Celery).
 
 ## Branch
 

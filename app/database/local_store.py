@@ -110,3 +110,22 @@ def listar(status: str | None = None) -> list[dict]:
     if status:
         videos = [video for video in videos if video.get("status") == status]
     return [dict(video) for video in videos]
+
+
+def atualizar_campos(video_id: str, campos: dict) -> dict | None:
+    """Atualização parcial (merge) de um registro; None se ele não existir.
+
+    Usada quando a transcodificação termina e o worker precisa gravar, junto
+    com o status, o que só o FFmpeg sabe (ex.: `duracao_segundos`).
+    """
+    with _lock:
+        videos = _ler()
+        encontrado = None
+        for video in videos:
+            if video.get("video_id") == video_id:
+                video.update(campos)
+                encontrado = video
+        if encontrado is None:
+            return None
+        _escrever(videos)
+        return dict(encontrado)

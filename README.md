@@ -11,6 +11,7 @@ Plataforma de streaming de vídeo com processamento assíncrono e qualidade adap
 | Transcodificação | FFmpeg |
 | Streaming | HLS (HTTP Live Streaming) |
 | Player | HLS.js + HTML5 Video |
+| Progresso em tempo real | Server-Sent Events (`/status/{id}/stream`) |
 | Banco de dados | Supabase (Postgres gerenciado) |
 | Testes | Pytest |
 | CI/CD | GitHub Actions |
@@ -181,6 +182,12 @@ http://localhost:8000/videos/...        ← HLS (master.m3u8, segmentos) e thumb
 > `media_pronta` (se o master.m3u8 existe mesmo no disco). Sem isso o player
 > tentava reproduzir vídeos sem arquivo HLS e ficava num loop de retry em 404.
 
+Quem assiste é identificado no navegador (menu 👤 → nome salvo em
+`localStorage`, ou um anônimo estável). Esse `user_id` alimenta o `POST /watch`
+e o `GET /recomendacoes/{user_id}` — as sugestões do menu de perfil vêm daí.
+A duração exibida no card (`10:12`) é medida pelo **ffprobe** na
+transcodificação e gravada no banco (`duracao_segundos`).
+
 ### Demo completa de ponta a ponta (recomendado)
 
 Com API + Redis + worker Celery rodando (passos acima), em outro terminal:
@@ -210,6 +217,7 @@ POST /upload ──► grava arquivo + metadados (Supabase ou JSON local)
                              └─► status completed no Redis E no banco
 GET /status/{id} ──► pending → processing → completed   (polling do front)
 GET /media/{id} ───► master.m3u8/thumbnail/segmentos existem no disco?
+GET /status/{id}/stream ──► SSE: o modal de upload acompanha sem polling
 GET /catalogo?prontos=1, /trending, /videos/{id}/relacionados ──► home + cards
 GET /catalogo/{id} ──► watch page (index.html?video={id})
 GET /videos/{id}/master.m3u8 ──► HLS.js toca o vídeo adaptativo
@@ -259,13 +267,15 @@ Se tudo estiver certo, isso retorna `'pong'` e o terminal do worker (seja o log 
 ## O vídeo não toca? Um comando diz onde está o problema
 
 ```bash
-python scripts/verificar_player.py
+python scripts/verificar_player.py     # API + banco + mídia + páginas
+python scripts/seed_e2e.py             # publica 3 vídeos de teste (sem Redis/worker)
+cd player-adaptativo/player-adaptativo && npm test    # 266 testes (inclui E2E real)
 ```
 
-Ele confere, em ordem: API no ar → vídeos `completed` no banco → quais têm
-`master.m3u8` no disco (`media_pronta`) → a playlist sendo servida com o
-Content-Type certo → home e watch page acessíveis. É o mesmo diagnóstico que o
-player faz na tela quando o play falha.
+`verificar_player.py` confere, em ordem: API no ar → vídeos `completed` no banco
+→ quais têm `master.m3u8` no disco (`media_pronta`) → a playlist sendo servida
+com o Content-Type certo → home e watch page acessíveis. É o mesmo diagnóstico
+que o player faz na tela quando o play falha.
 
 ## Problemas comuns
 
@@ -283,6 +293,8 @@ player faz na tela quando o play falha.
 | O player diz "os arquivos HLS não foram encontrados" | Vídeo `completed` no banco, mas a pasta `videos/{id}/` não tem `master.m3u8` (ela não vai para o git — é gerada localmente) | `GET /media/{video_id}` mostra o que existe no disco; rode `python scripts/demo_completo.py` ou reenvie o vídeo pela home |
 | A home está vazia, mas o `/catalogo` tem vídeos | Todos estão sem mídia (`prontos=1` filtra) ou com status diferente de `completed` | `GET /catalogo` (sem filtro) mostra todos; confira `media_pronta` de cada um |
 | "A API não respondeu em http://localhost:8000" | Backend fora do ar, ou o front aberto em outra origem sem CORS | Suba `uvicorn app.main:app --reload`; se usar Live Server, confira o `API_BASE_URL` do `config.js` |
+| Card sem duração / sem thumbnail | O vídeo foi publicado antes do worker gravar `duracao_segundos`, ou a transcodificação falhou no meio | Rode `python scripts/seed_e2e.py` (cenário de teste) ou reenvie o vídeo; confira `GET /media/{video_id}` |
+| O modal de upload fica em "Processando..." para sempre | Worker Celery fora do ar (o SSE reporta o estado, mas ninguém transcodifica) | `celery -A app.queue.celery_app worker --loglevel=info --pool=solo` |
 
 ## Estrutura de pastas
 

@@ -157,3 +157,98 @@ def test_404_quando_nem_redis_nem_banco_conhecem_o_video(monkeypatch):
 
     assert resposta.status_code == 404
     assert resposta.json()["detail"] == "video_id não encontrado"
+
+
+# ---------------------------------------------------------------------------
+# GET /status/{video_id}/stream — SSE (Server-Sent Events)
+# ---------------------------------------------------------------------------
+
+def _eventos(corpo: str) -> list[dict]:
+    """Converte o corpo SSE em lista de payloads JSON (linhas 'data: ...')."""
+    import json
+
+    return [
+        json.loads(linha[len("data:"):].strip())
+        for linha in corpo.splitlines()
+        if linha.startswith("data:")
+    ]
+
+
+def test_stream_emite_o_status_e_encerra_no_completed(monkeypatch):
+    monkeypatch.setattr(
+        "app.status.router.get_status",
+        lambda video_id: {"video_id": video_id, "status": "completed"},
+    )
+
+    with client.stream("GET", "/status/v1/stream?intervalo=0.1&timeout=1") as resposta:
+        assert resposta.status_code == 200
+        assert resposta.headers["content-type"].startswith("text/event-stream")
+        corpo = "".join(resposta.iter_text())
+
+    eventos = _eventos(corpo)
+
+    assert eventos[0]["status"] == "completed"
+    assert eventos[0]["media_pronta"] is False      # sem master.m3u8 no disco
+    assert eventos[-1]["evento"] == "fim"
+
+
+def test_stream_usa_o_banco_quando_o_redis_nao_tem(monkeypatch):
+    # intervalo/timeout mínimos de propósito: "processing" não é estado final,
+    # então o stream só encerra pelo limite de tempo — e o teste não pode
+    # esperar os 900s padrão.
+
+    monkeypatch.setattr("app.status.router.get_status", lambda video_id: None)
+    monkeypatch.setattr(
+        "app.status.router.buscar_video",
+        lambda video_id: {"video_id": video_id, "status": "processing"},
+    )
+
+    with client.stream("GET", "/status/v1/stream?intervalo=0.1&timeout=1") as resposta:
+        corpo = "".join(resposta.iter_text())
+
+    eventos = _eventos(corpo)
+    assert eventos[0]["origem"] == "banco"
+    assert eventos[-1]["evento"] == "timeout"
+
+
+def test_stream_de_video_desconhecido_avisa_unknown_e_encerra_por_timeout(monkeypatch):
+    monkeypatch.setattr("app.status.router.get_status", lambda video_id: None)
+    monkeypatch.setattr("app.status.router.buscar_video", lambda video_id: None)
+
+    with client.stream("GET", "/status/fantasma/stream?intervalo=0.1&timeout=1") as resposta:
+        corpo = "".join(resposta.iter_text())
+
+    eventos = _eventos(corpo)
+
+    assert eventos[0]["status"] == "unknown"
+    assert eventos[-1]["evento"] == "timeout"
+
+
+def test_stream_emite_cada_mudanca_de_estado_uma_vez(monkeypatch):
+    estados = [
+        {"video_id": "v1", "status": "pending"},
+        {"video_id": "v1", "status": "pending"},   # repetido: não pode re-emitir
+        {"video_id": "v1", "status": "processing"},
+        {"video_id": "v1", "status": "completed"},
+    ]
+    posicao = {"i": 0}
+
+    def _get_status(video_id):
+        estado = estados[min(posicao["i"], len(estados) - 1)]
+        posicao["i"] += 1
+        return dict(estado)
+
+    monkeypatch.setattr("app.status.router.get_status", _get_status)
+
+    with client.stream("GET", "/status/v1/stream?intervalo=0.1&timeout=1") as resposta:
+        corpo = "".join(resposta.iter_text())
+
+    # O quadro final ("fim") também carrega o status; aqui interessam só as
+    # transições de estado emitidas durante o processamento.
+    statuses = [
+        evento["status"] for evento in _eventos(corpo)
+        if "status" in evento and "evento" not in evento
+    ]
+
+    assert statuses == ["pending", "processing", "completed"]
+    assert _eventos(corpo)[-1]["evento"] == "fim"

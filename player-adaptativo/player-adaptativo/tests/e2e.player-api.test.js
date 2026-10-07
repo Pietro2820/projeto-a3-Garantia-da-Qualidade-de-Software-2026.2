@@ -182,6 +182,14 @@ talvez("E2E — home contra a API real", () => {
     delete window.PLAYER_CONFIG;
   });
 
+  test("o card mostra a duração medida pelo backend (ffprobe → banco)", async () => {
+    await import("../js/home.js");
+    await flush();
+
+    // scripts/seed_e2e.py grava duracao_segundos=612 → a API devolve "10:12".
+    expect(document.querySelector("#homeGrid .thumbnail-duration").textContent).toBe("10:12");
+  });
+
   test("lista apenas vídeos que tocam (prontos=1) e linka para a watch page", async () => {
     await import("../js/home.js");
     await flush();

@@ -128,3 +128,30 @@ def listar_videos(status: str = None) -> list[dict]:
         query = query.eq("status", status)
     response = query.execute()
     return response.data
+
+
+def atualizar_video(video_id: str, campos: dict) -> dict | None:
+    """
+    Atualização parcial de um vídeo (merge de `campos` no registro).
+
+    Exemplo de uso (worker, quando a transcodificação conclui):
+        atualizar_video(video_id, {"status": "completed", "duracao_segundos": 612.4})
+
+    None quando o vídeo não existe. `status` continua tendo a função dedicada
+    `atualizar_status` (usada em vários pontos); esta existe para os campos que
+    só aparecem depois do processamento.
+    """
+    if not campos:
+        return buscar_video(video_id)
+
+    client = _cliente_supabase()
+    if client is None:
+        return local_store.atualizar_campos(video_id, campos)
+
+    response = (
+        client.table(TABLE)
+        .update(campos)
+        .eq("video_id", video_id)
+        .execute()
+    )
+    return response.data[0] if response.data else None

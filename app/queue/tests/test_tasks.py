@@ -233,3 +233,45 @@ def test_notificar_status_devolve_o_payload_do_evento(estado):
     resultado = tasks.notificar_status.apply(args=("abc-123", estado))
 
     assert resultado.result == {"video_id": "abc-123", "status": estado}
+
+
+# ---------------------------------------------------------------------------
+# Duração medida na transcodificação → banco (selo de duração no card)
+# ---------------------------------------------------------------------------
+
+def test_transcodificar_grava_a_duracao_no_banco(resultado_ok):
+    resultado_ok["duracao_segundos"] = 754.2
+
+    with patch.object(tasks, "processar", return_value=resultado_ok), \
+         patch.object(tasks, "set_status"), \
+         patch.object(tasks, "atualizar_video") as mock_atualizar:
+        tasks.transcodificar_video.apply(args=("abc-123", "/x.mp4"))
+
+    mock_atualizar.assert_called_once_with(
+        "abc-123", {"status": "completed", "duracao_segundos": 754.2}
+    )
+
+
+def test_sem_duracao_no_resultado_usa_apenas_o_status(resultado_ok):
+    resultado_ok.pop("duracao_segundos", None)
+
+    with patch.object(tasks, "processar", return_value=resultado_ok), \
+         patch.object(tasks, "set_status"), \
+         patch.object(tasks, "atualizar_status") as mock_status, \
+         patch.object(tasks, "atualizar_video") as mock_atualizar:
+        tasks.transcodificar_video.apply(args=("abc-123", "/x.mp4"))
+
+    mock_status.assert_called_once_with("abc-123", "completed")
+    mock_atualizar.assert_not_called()
+
+
+def test_falha_no_banco_nao_derruba_a_task(resultado_ok):
+    resultado_ok["duracao_segundos"] = 10.0
+
+    with patch.object(tasks, "processar", return_value=resultado_ok), \
+         patch.object(tasks, "set_status"), \
+         patch.object(tasks, "atualizar_video", side_effect=RuntimeError("banco fora")):
+        resultado = tasks.transcodificar_video.apply(args=("abc-123", "/x.mp4"))
+
+    assert resultado.successful()
+    assert resultado.result["status"] == "completed"
