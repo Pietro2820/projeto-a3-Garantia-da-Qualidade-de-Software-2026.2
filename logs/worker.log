@@ -1,0 +1,853 @@
+ 
+ -------------- celery@Pietro-Not v5.6.3 (recovery)
+--- ***** ----- 
+-- ******* ---- Windows-11-10.0.26200-SP0 2026-09-25 15:46:29
+- *** --- * --- 
+- ** ---------- [config]
+- ** ---------- .> app:         projeto_a3:0x157e670b4d0
+- ** ---------- .> transport:   redis://localhost:6379/0
+- ** ---------- .> results:     redis://localhost:6379/1
+- *** --- * --- .> concurrency: 12 (solo)
+-- ******* ---- .> task events: OFF (enable -E to monitor tasks in this worker)
+--- ***** ----- 
+ -------------- [queues]
+                .> notifications    exchange=default(direct) key=notifications
+                .> transcode        exchange=default(direct) key=transcode
+                .> uploads          exchange=default(direct) key=uploads
+
+[tasks]
+  . app.queue.tasks.hello_world
+  . app.queue.tasks.notificar_status
+  . app.queue.tasks.processar_upload
+  . app.queue.tasks.transcodificar_video
+
+[2026-09-25 15:46:30,051: INFO/MainProcess] Connected to redis://localhost:6379/0
+[2026-09-25 15:46:30,059: INFO/MainProcess] mingle: searching for neighbors
+[2026-09-25 15:46:31,110: INFO/MainProcess] mingle: all alone
+[2026-09-25 15:46:31,205: INFO/MainProcess] celery@Pietro-Not ready.
+ 
+ -------------- celery@Pietro-Not v5.6.3 (recovery)
+--- ***** ----- 
+-- ******* ---- Windows-11-10.0.26200-SP0 2026-09-25 15:52:29
+- *** --- * --- 
+- ** ---------- [config]
+- ** ---------- .> app:         projeto_a3:0x200fae1b4d0
+- ** ---------- .> transport:   redis://localhost:6379/0
+- ** ---------- .> results:     redis://localhost:6379/1
+- *** --- * --- .> concurrency: 12 (solo)
+-- ******* ---- .> task events: OFF (enable -E to monitor tasks in this worker)
+--- ***** ----- 
+ -------------- [queues]
+                .> notifications    exchange=default(direct) key=notifications
+                .> transcode        exchange=default(direct) key=transcode
+                .> uploads          exchange=default(direct) key=uploads
+
+[tasks]
+  . app.queue.tasks.hello_world
+  . app.queue.tasks.notificar_status
+  . app.queue.tasks.processar_upload
+  . app.queue.tasks.transcodificar_video
+
+[2026-09-25 15:52:30,035: INFO/MainProcess] Connected to redis://localhost:6379/0
+[2026-09-25 15:52:30,057: INFO/MainProcess] mingle: searching for neighbors
+[2026-09-25 15:52:31,096: INFO/MainProcess] mingle: all alone
+[2026-09-25 15:52:31,150: INFO/MainProcess] celery@Pietro-Not ready.
+ 
+ -------------- celery@Pietro-Not v5.6.3 (recovery)
+--- ***** ----- 
+-- ******* ---- Windows-11-10.0.26200-SP0 2026-09-25 15:57:11
+- *** --- * --- 
+- ** ---------- [config]
+- ** ---------- .> app:         projeto_a3:0x2895063b4d0
+- ** ---------- .> transport:   redis://localhost:6379/0
+- ** ---------- .> results:     redis://localhost:6379/1
+- *** --- * --- .> concurrency: 12 (solo)
+-- ******* ---- .> task events: OFF (enable -E to monitor tasks in this worker)
+--- ***** ----- 
+ -------------- [queues]
+                .> notifications    exchange=default(direct) key=notifications
+                .> transcode        exchange=default(direct) key=transcode
+                .> uploads          exchange=default(direct) key=uploads
+
+[tasks]
+  . app.queue.tasks.hello_world
+  . app.queue.tasks.notificar_status
+  . app.queue.tasks.processar_upload
+  . app.queue.tasks.transcodificar_video
+
+[2026-09-25 15:57:11,664: INFO/MainProcess] Connected to redis://localhost:6379/0
+[2026-09-25 15:57:11,673: INFO/MainProcess] mingle: searching for neighbors
+[2026-09-25 15:57:12,712: INFO/MainProcess] mingle: all alone
+[2026-09-25 15:57:12,792: INFO/MainProcess] celery@Pietro-Not ready.
+ 
+ -------------- celery@Pietro-Not v5.6.3 (recovery)
+--- ***** ----- 
+-- ******* ---- Windows-11-10.0.26200-SP0 2026-09-28 19:16:34
+- *** --- * --- 
+- ** ---------- [config]
+- ** ---------- .> app:         projeto_a3:0x203a0d86ba0
+- ** ---------- .> transport:   redis://localhost:6379/0
+- ** ---------- .> results:     redis://localhost:6379/1
+- *** --- * --- .> concurrency: 12 (solo)
+-- ******* ---- .> task events: OFF (enable -E to monitor tasks in this worker)
+--- ***** ----- 
+ -------------- [queues]
+                .> notifications    exchange=default(direct) key=notifications
+                .> transcode        exchange=default(direct) key=transcode
+                .> uploads          exchange=default(direct) key=uploads
+
+[tasks]
+  . app.queue.tasks.hello_world
+  . app.queue.tasks.notificar_status
+  . app.queue.tasks.processar_upload
+  . app.queue.tasks.transcodificar_video
+
+[2026-09-28 19:16:38,575: ERROR/MainProcess] consumer: Cannot connect to redis://localhost:6379/0: Error 10061 connecting to localhost:6379. Nenhuma conexão pôde ser feita porque a máquina de destino as recusou ativamente..
+Trying again in 2.00 seconds... (1/100)
+
+[2026-09-28 19:16:44,630: ERROR/MainProcess] consumer: Cannot connect to redis://localhost:6379/0: Error 10061 connecting to localhost:6379. Nenhuma conexão pôde ser feita porque a máquina de destino as recusou ativamente..
+Trying again in 4.00 seconds... (2/100)
+
+[2026-09-28 19:16:52,667: ERROR/MainProcess] consumer: Cannot connect to redis://localhost:6379/0: Error 10061 connecting to localhost:6379. Nenhuma conexão pôde ser feita porque a máquina de destino as recusou ativamente..
+Trying again in 6.00 seconds... (3/100)
+
+[2026-09-28 19:17:02,738: ERROR/MainProcess] consumer: Cannot connect to redis://localhost:6379/0: Error 10061 connecting to localhost:6379. Nenhuma conexão pôde ser feita porque a máquina de destino as recusou ativamente..
+Trying again in 8.00 seconds... (4/100)
+
+[2026-09-28 19:17:14,806: ERROR/MainProcess] consumer: Cannot connect to redis://localhost:6379/0: Error 10061 connecting to localhost:6379. Nenhuma conexão pôde ser feita porque a máquina de destino as recusou ativamente..
+Trying again in 10.00 seconds... (5/100)
+
+[2026-09-28 19:17:28,837: ERROR/MainProcess] consumer: Cannot connect to redis://localhost:6379/0: Error 10061 connecting to localhost:6379. Nenhuma conexão pôde ser feita porque a máquina de destino as recusou ativamente..
+Trying again in 12.00 seconds... (6/100)
+
+[2026-09-28 19:17:44,956: ERROR/MainProcess] consumer: Cannot connect to redis://localhost:6379/0: Error 10061 connecting to localhost:6379. Nenhuma conexão pôde ser feita porque a máquina de destino as recusou ativamente..
+Trying again in 14.00 seconds... (7/100)
+
+[2026-09-28 19:18:03,032: ERROR/MainProcess] consumer: Cannot connect to redis://localhost:6379/0: Error 10061 connecting to localhost:6379. Nenhuma conexão pôde ser feita porque a máquina de destino as recusou ativamente..
+Trying again in 16.00 seconds... (8/100)
+
+[2026-09-28 19:18:23,154: ERROR/MainProcess] consumer: Cannot connect to redis://localhost:6379/0: Error 10061 connecting to localhost:6379. Nenhuma conexão pôde ser feita porque a máquina de destino as recusou ativamente..
+Trying again in 18.00 seconds... (9/100)
+
+ 
+ -------------- celery@Pietro-Not v5.6.3 (recovery)
+--- ***** ----- 
+-- ******* ---- Windows-11-10.0.26200-SP0 2026-09-28 20:30:45
+- *** --- * --- 
+- ** ---------- [config]
+- ** ---------- .> app:         projeto_a3:0x14d5dd43cb0
+- ** ---------- .> transport:   redis://localhost:6379/0
+- ** ---------- .> results:     redis://localhost:6379/1
+- *** --- * --- .> concurrency: 12 (solo)
+-- ******* ---- .> task events: OFF (enable -E to monitor tasks in this worker)
+--- ***** ----- 
+ -------------- [queues]
+                .> notifications    exchange=default(direct) key=notifications
+                .> transcode        exchange=default(direct) key=transcode
+                .> uploads          exchange=default(direct) key=uploads
+
+[tasks]
+  . app.queue.tasks.hello_world
+  . app.queue.tasks.notificar_status
+  . app.queue.tasks.processar_upload
+  . app.queue.tasks.transcodificar_video
+
+[2026-09-28 20:30:45,602: INFO/MainProcess] Connected to redis://localhost:6379/0
+[2026-09-28 20:30:45,633: INFO/MainProcess] mingle: searching for neighbors
+[2026-09-28 20:30:46,711: INFO/MainProcess] mingle: all alone
+[2026-09-28 20:30:47,306: INFO/MainProcess] celery@Pietro-Not ready.
+[2026-09-28 20:32:23,045: INFO/MainProcess] Task app.queue.tasks.processar_upload[d30917f0-1373-4cbc-b5bd-434004b77223] received
+[2026-09-28 20:32:23,349: INFO/MainProcess] HTTP Request: PATCH https://qnyxkrnaqtacjdwcbhjn.supabase.co/rest/v1/videos?video_id=eq.bd0a0f39-6557-4834-a694-bbee95f907b0 "HTTP/2 200 OK"
+[2026-09-28 20:32:23,382: INFO/MainProcess] Task app.queue.tasks.processar_upload[d30917f0-1373-4cbc-b5bd-434004b77223] succeeded in 0.3364152000285685s: {'video_id': 'bd0a0f39-6557-4834-a694-bbee95f907b0', 'status': 'processing'}
+[2026-09-28 20:32:23,387: INFO/MainProcess] Task app.queue.tasks.transcodificar_video[294679a9-437d-47c2-9968-0fe36d67aacd] received
+[2026-09-28 20:32:30,233: INFO/MainProcess] Transcodificação concluída para video_id=bd0a0f39-6557-4834-a694-bbee95f907b0
+[2026-09-28 20:32:30,371: INFO/MainProcess] HTTP Request: PATCH https://qnyxkrnaqtacjdwcbhjn.supabase.co/rest/v1/videos?video_id=eq.bd0a0f39-6557-4834-a694-bbee95f907b0 "HTTP/2 200 OK"
+[2026-09-28 20:32:30,375: INFO/MainProcess] Task app.queue.tasks.transcodificar_video[294679a9-437d-47c2-9968-0fe36d67aacd] succeeded in 6.987368799978867s: {'status': 'completed', 'video_id': 'bd0a0f39-6557-4834-a694-bbee95f907b0', 'diretorio': 'C:/Users/cardo/Downloads/projeto-a3-integrado (1)/projeto-a3/videos/bd0a0f39-6557-4834-a694-bbee95f907b0', 'master_playlist': 'C:/Users/cardo/Downloads/projeto-a3-integrado (1)/projeto-a3/videos/bd0a0f39-6557-4834-a694-bbee95f907b0/master.m3u8', 'playlists': {'360p': {'playlist': 'C:/Users/cardo/Downloads/projeto-a3-integrado (1)/projeto-a3/videos/bd0a0f39-6557-4834-a694-bbee95f907b0/360p/playlist.m3u8', 'largura': 640, 'altura': 360, 'bandwidth': 464000}, '480p': {'playlist': 'C:/Users/cardo/Downloads/projeto-a3-integrado (1)/projeto-a3/videos/bd0a0f39-6557-4834-a694-bbee95f907b0/480p/playlist.m3u8', 'largura': 854, 'altura': 480, 'bandwidth': 896000}, '720p': {'playlist': 'C:/Users/cardo/Downloads/projeto-a3-integrado (1)/projeto-a3/videos/bd0a0f39-6557-4834-a694-bbee95f907b0/720p/playlist.m3u8', 'largura': 1280, 'altura': 720, 'bandwidth': 2628000}, '1080p': {'playlist': 'C:/Users/cardo/Downloads/projeto-a3-integrado...', ...}}}
+[2026-09-28 20:34:48,003: INFO/MainProcess] Task app.queue.tasks.processar_upload[433f8d63-9b9c-4c45-8f98-89bb5a4316bd] received
+[2026-09-28 20:34:48,219: INFO/MainProcess] HTTP Request: PATCH https://qnyxkrnaqtacjdwcbhjn.supabase.co/rest/v1/videos?video_id=eq.fd6b6448-9c35-4c68-ab3e-0edad0f7d249 "HTTP/2 200 OK"
+[2026-09-28 20:34:48,228: INFO/MainProcess] Task app.queue.tasks.processar_upload[433f8d63-9b9c-4c45-8f98-89bb5a4316bd] succeeded in 0.22472950001247227s: {'video_id': 'fd6b6448-9c35-4c68-ab3e-0edad0f7d249', 'status': 'processing'}
+[2026-09-28 20:34:48,235: INFO/MainProcess] Task app.queue.tasks.transcodificar_video[8ecf4902-f5c4-4c1d-bb4d-9adf60a91b50] received
+[2026-09-28 20:34:52,906: INFO/MainProcess] Transcodificação concluída para video_id=fd6b6448-9c35-4c68-ab3e-0edad0f7d249
+[2026-09-28 20:34:53,100: INFO/MainProcess] HTTP Request: PATCH https://qnyxkrnaqtacjdwcbhjn.supabase.co/rest/v1/videos?video_id=eq.fd6b6448-9c35-4c68-ab3e-0edad0f7d249 "HTTP/2 200 OK"
+[2026-09-28 20:34:53,105: INFO/MainProcess] Task app.queue.tasks.transcodificar_video[8ecf4902-f5c4-4c1d-bb4d-9adf60a91b50] succeeded in 4.868992600124329s: {'status': 'completed', 'video_id': 'fd6b6448-9c35-4c68-ab3e-0edad0f7d249', 'diretorio': 'C:/Users/cardo/Downloads/projeto-a3-integrado (1)/projeto-a3/videos/fd6b6448-9c35-4c68-ab3e-0edad0f7d249', 'master_playlist': 'C:/Users/cardo/Downloads/projeto-a3-integrado (1)/projeto-a3/videos/fd6b6448-9c35-4c68-ab3e-0edad0f7d249/master.m3u8', 'playlists': {'360p': {'playlist': 'C:/Users/cardo/Downloads/projeto-a3-integrado (1)/projeto-a3/videos/fd6b6448-9c35-4c68-ab3e-0edad0f7d249/360p/playlist.m3u8', 'largura': 640, 'altura': 360, 'bandwidth': 464000}, '480p': {'playlist': 'C:/Users/cardo/Downloads/projeto-a3-integrado (1)/projeto-a3/videos/fd6b6448-9c35-4c68-ab3e-0edad0f7d249/480p/playlist.m3u8', 'largura': 854, 'altura': 480, 'bandwidth': 896000}, '720p': {'playlist': 'C:/Users/cardo/Downloads/projeto-a3-integrado (1)/projeto-a3/videos/fd6b6448-9c35-4c68-ab3e-0edad0f7d249/720p/playlist.m3u8', 'largura': 1280, 'altura': 720, 'bandwidth': 2628000}, '1080p': {'playlist': 'C:/Users/cardo/Downloads/projeto-a3-integrado...', ...}}}
+ 
+ -------------- celery@Pietro-Not v5.6.3 (recovery)
+--- ***** ----- 
+-- ******* ---- Windows-11-10.0.26200-SP0 2026-09-28 20:42:47
+- *** --- * --- 
+- ** ---------- [config]
+- ** ---------- .> app:         projeto_a3:0x219d49d3cb0
+- ** ---------- .> transport:   redis://localhost:6379/0
+- ** ---------- .> results:     redis://localhost:6379/1
+- *** --- * --- .> concurrency: 12 (solo)
+-- ******* ---- .> task events: OFF (enable -E to monitor tasks in this worker)
+--- ***** ----- 
+ -------------- [queues]
+                .> notifications    exchange=default(direct) key=notifications
+                .> transcode        exchange=default(direct) key=transcode
+                .> uploads          exchange=default(direct) key=uploads
+
+[tasks]
+  . app.queue.tasks.hello_world
+  . app.queue.tasks.notificar_status
+  . app.queue.tasks.processar_upload
+  . app.queue.tasks.transcodificar_video
+
+[2026-09-28 20:42:47,474: INFO/MainProcess] Connected to redis://localhost:6379/0
+[2026-09-28 20:42:47,485: INFO/MainProcess] mingle: searching for neighbors
+[2026-09-28 20:42:48,536: INFO/MainProcess] mingle: all alone
+[2026-09-28 20:42:48,600: INFO/MainProcess] celery@Pietro-Not ready.
+ 
+ -------------- celery@Pietro-Not v5.6.3 (recovery)
+--- ***** ----- 
+-- ******* ---- Windows-11-10.0.26200-SP0 2026-09-28 20:45:47
+- *** --- * --- 
+- ** ---------- [config]
+- ** ---------- .> app:         projeto_a3:0x1d0fa9d3cb0
+- ** ---------- .> transport:   redis://localhost:6379/0
+- ** ---------- .> results:     redis://localhost:6379/1
+- *** --- * --- .> concurrency: 12 (solo)
+-- ******* ---- .> task events: OFF (enable -E to monitor tasks in this worker)
+--- ***** ----- 
+ -------------- [queues]
+                .> notifications    exchange=default(direct) key=notifications
+                .> transcode        exchange=default(direct) key=transcode
+                .> uploads          exchange=default(direct) key=uploads
+
+[tasks]
+  . app.queue.tasks.hello_world
+  . app.queue.tasks.notificar_status
+  . app.queue.tasks.processar_upload
+  . app.queue.tasks.transcodificar_video
+
+[2026-09-28 20:45:47,203: INFO/MainProcess] Connected to redis://localhost:6379/0
+[2026-09-28 20:45:47,213: INFO/MainProcess] mingle: searching for neighbors
+[2026-09-28 20:45:48,262: INFO/MainProcess] mingle: all alone
+[2026-09-28 20:45:48,326: INFO/MainProcess] celery@Pietro-Not ready.
+ 
+ -------------- celery@Pietro-Not v5.6.3 (recovery)
+--- ***** ----- 
+-- ******* ---- Windows-11-10.0.26200-SP0 2026-09-28 20:50:35
+- *** --- * --- 
+- ** ---------- [config]
+- ** ---------- .> app:         projeto_a3:0x2a9d8f93cb0
+- ** ---------- .> transport:   redis://localhost:6379/0
+- ** ---------- .> results:     redis://localhost:6379/1
+- *** --- * --- .> concurrency: 12 (solo)
+-- ******* ---- .> task events: OFF (enable -E to monitor tasks in this worker)
+--- ***** ----- 
+ -------------- [queues]
+                .> notifications    exchange=default(direct) key=notifications
+                .> transcode        exchange=default(direct) key=transcode
+                .> uploads          exchange=default(direct) key=uploads
+
+[tasks]
+  . app.queue.tasks.hello_world
+  . app.queue.tasks.notificar_status
+  . app.queue.tasks.processar_upload
+  . app.queue.tasks.transcodificar_video
+
+[2026-09-28 20:50:35,689: INFO/MainProcess] Connected to redis://localhost:6379/0
+[2026-09-28 20:50:35,696: INFO/MainProcess] mingle: searching for neighbors
+[2026-09-28 20:50:36,736: INFO/MainProcess] mingle: all alone
+[2026-09-28 20:50:36,785: INFO/MainProcess] celery@Pietro-Not ready.
+[2026-09-28 20:54:53,469: INFO/MainProcess] Task app.queue.tasks.processar_upload[a66ad1de-7be7-4e98-82fc-499ddeb0fc71] received
+[2026-09-28 20:54:53,803: INFO/MainProcess] HTTP Request: PATCH https://qnyxkrnaqtacjdwcbhjn.supabase.co/rest/v1/videos?video_id=eq.cb735089-03d9-4214-bbe7-25c75b79342f "HTTP/2 200 OK"
+[2026-09-28 20:54:53,832: INFO/MainProcess] Task app.queue.tasks.processar_upload[a66ad1de-7be7-4e98-82fc-499ddeb0fc71] succeeded in 0.3629719000309706s: {'video_id': 'cb735089-03d9-4214-bbe7-25c75b79342f', 'status': 'processing'}
+[2026-09-28 20:54:53,836: INFO/MainProcess] Task app.queue.tasks.transcodificar_video[c54abc1a-e8ac-4006-87b3-f93eeb014e59] received
+[2026-09-28 20:54:57,663: INFO/MainProcess] Found credentials in environment variables.
+[2026-09-28 20:55:02,779: INFO/MainProcess] Transcodificação concluída para video_id=cb735089-03d9-4214-bbe7-25c75b79342f
+[2026-09-28 20:55:02,969: INFO/MainProcess] HTTP Request: PATCH https://qnyxkrnaqtacjdwcbhjn.supabase.co/rest/v1/videos?video_id=eq.cb735089-03d9-4214-bbe7-25c75b79342f "HTTP/2 200 OK"
+[2026-09-28 20:55:02,974: INFO/MainProcess] Task app.queue.tasks.transcodificar_video[c54abc1a-e8ac-4006-87b3-f93eeb014e59] succeeded in 9.138289500027895s: {'status': 'completed', 'video_id': 'cb735089-03d9-4214-bbe7-25c75b79342f', 'diretorio': 'C:/Users/cardo/Downloads/projeto-a3-integrado (1)/projeto-a3/videos/cb735089-03d9-4214-bbe7-25c75b79342f', 'master_playlist': 'C:/Users/cardo/Downloads/projeto-a3-integrado (1)/projeto-a3/videos/cb735089-03d9-4214-bbe7-25c75b79342f/master.m3u8', 'playlists': {'360p': {'playlist': 'C:/Users/cardo/Downloads/projeto-a3-integrado (1)/projeto-a3/videos/cb735089-03d9-4214-bbe7-25c75b79342f/360p/playlist.m3u8', 'largura': 640, 'altura': 360, 'bandwidth': 464000}, '480p': {'playlist': 'C:/Users/cardo/Downloads/projeto-a3-integrado (1)/projeto-a3/videos/cb735089-03d9-4214-bbe7-25c75b79342f/480p/playlist.m3u8', 'largura': 854, 'altura': 480, 'bandwidth': 896000}, '720p': {'playlist': 'C:/Users/cardo/Downloads/projeto-a3-integrado (1)/projeto-a3/videos/cb735089-03d9-4214-bbe7-25c75b79342f/720p/playlist.m3u8', 'largura': 1280, 'altura': 720, 'bandwidth': 2628000}, '1080p': {'playlist': 'C:/Users/cardo/Downloads/projeto-a3-integrado...', ...}}}
+ 
+ -------------- celery@Pietro-Not v5.6.3 (recovery)
+--- ***** ----- 
+-- ******* ---- Windows-11-10.0.26200-SP0 2026-09-28 22:27:53
+- *** --- * --- 
+- ** ---------- [config]
+- ** ---------- .> app:         projeto_a3:0x197c9173770
+- ** ---------- .> transport:   redis://localhost:6379/0
+- ** ---------- .> results:     redis://localhost:6379/1
+- *** --- * --- .> concurrency: 12 (solo)
+-- ******* ---- .> task events: OFF (enable -E to monitor tasks in this worker)
+--- ***** ----- 
+ -------------- [queues]
+                .> notifications    exchange=default(direct) key=notifications
+                .> transcode        exchange=default(direct) key=transcode
+                .> uploads          exchange=default(direct) key=uploads
+
+[tasks]
+  . app.queue.tasks.hello_world
+  . app.queue.tasks.notificar_status
+  . app.queue.tasks.processar_upload
+  . app.queue.tasks.transcodificar_video
+
+[2026-09-28 22:27:53,416: INFO/MainProcess] Connected to redis://localhost:6379/0
+[2026-09-28 22:27:53,428: INFO/MainProcess] mingle: searching for neighbors
+[2026-09-28 22:27:54,491: INFO/MainProcess] mingle: all alone
+[2026-09-28 22:27:54,594: INFO/MainProcess] celery@Pietro-Not ready.
+ 
+ -------------- celery@Pietro-Not v5.6.3 (recovery)
+--- ***** ----- 
+-- ******* ---- Windows-11-10.0.26200-SP0 2026-09-29 15:22:12
+- *** --- * --- 
+- ** ---------- [config]
+- ** ---------- .> app:         projeto_a3:0x266f14f3770
+- ** ---------- .> transport:   redis://localhost:6379/0
+- ** ---------- .> results:     redis://localhost:6379/1
+- *** --- * --- .> concurrency: 12 (solo)
+-- ******* ---- .> task events: OFF (enable -E to monitor tasks in this worker)
+--- ***** ----- 
+ -------------- [queues]
+                .> notifications    exchange=default(direct) key=notifications
+                .> transcode        exchange=default(direct) key=transcode
+                .> uploads          exchange=default(direct) key=uploads
+
+[tasks]
+  . app.queue.tasks.hello_world
+  . app.queue.tasks.notificar_status
+  . app.queue.tasks.processar_upload
+  . app.queue.tasks.transcodificar_video
+
+[2026-09-29 15:22:12,211: INFO/MainProcess] Connected to redis://localhost:6379/0
+[2026-09-29 15:22:12,229: INFO/MainProcess] mingle: searching for neighbors
+[2026-09-29 15:22:13,327: INFO/MainProcess] mingle: all alone
+[2026-09-29 15:22:13,422: INFO/MainProcess] celery@Pietro-Not ready.
+ 
+ -------------- celery@Pietro-Not v5.6.3 (recovery)
+--- ***** ----- 
+-- ******* ---- Windows-11-10.0.26200-SP0 2026-10-06 19:36:17
+- *** --- * --- 
+- ** ---------- [config]
+- ** ---------- .> app:         projeto_a3:0x20dad06fcb0
+- ** ---------- .> transport:   redis://localhost:6379/0
+- ** ---------- .> results:     redis://localhost:6379/1
+- *** --- * --- .> concurrency: 12 (solo)
+-- ******* ---- .> task events: OFF (enable -E to monitor tasks in this worker)
+--- ***** ----- 
+ -------------- [queues]
+                .> notifications    exchange=default(direct) key=notifications
+                .> transcode        exchange=default(direct) key=transcode
+                .> uploads          exchange=default(direct) key=uploads
+
+[tasks]
+  . app.queue.tasks.hello_world
+  . app.queue.tasks.notificar_status
+  . app.queue.tasks.processar_upload
+  . app.queue.tasks.transcodificar_video
+
+[2026-10-06 19:36:18,181: INFO/MainProcess] Connected to redis://localhost:6379/0
+[2026-10-06 19:36:18,199: INFO/MainProcess] mingle: searching for neighbors
+[2026-10-06 19:36:19,317: INFO/MainProcess] mingle: all alone
+[2026-10-06 19:36:19,787: INFO/MainProcess] celery@Pietro-Not ready.
+ 
+ -------------- celery@Pietro-Not v5.6.3 (recovery)
+--- ***** ----- 
+-- ******* ---- Windows-11-10.0.26200-SP0 2026-10-06 19:49:46
+- *** --- * --- 
+- ** ---------- [config]
+- ** ---------- .> app:         projeto_a3:0x26142a1fcb0
+- ** ---------- .> transport:   redis://localhost:6379/0
+- ** ---------- .> results:     redis://localhost:6379/1
+- *** --- * --- .> concurrency: 12 (solo)
+-- ******* ---- .> task events: OFF (enable -E to monitor tasks in this worker)
+--- ***** ----- 
+ -------------- [queues]
+                .> notifications    exchange=default(direct) key=notifications
+                .> transcode        exchange=default(direct) key=transcode
+                .> uploads          exchange=default(direct) key=uploads
+
+[tasks]
+  . app.queue.tasks.hello_world
+  . app.queue.tasks.notificar_status
+  . app.queue.tasks.processar_upload
+  . app.queue.tasks.transcodificar_video
+
+[2026-10-06 19:49:46,388: INFO/MainProcess] Connected to redis://localhost:6379/0
+[2026-10-06 19:49:46,411: INFO/MainProcess] mingle: searching for neighbors
+[2026-10-06 19:49:47,471: INFO/MainProcess] mingle: all alone
+[2026-10-06 19:49:47,589: INFO/MainProcess] celery@Pietro-Not ready.
+ 
+ -------------- celery@Pietro-Not v5.6.3 (recovery)
+--- ***** ----- 
+-- ******* ---- Windows-11-10.0.26200-SP0 2026-10-06 20:24:45
+- *** --- * --- 
+- ** ---------- [config]
+- ** ---------- .> app:         projeto_a3:0x22a7a43fcb0
+- ** ---------- .> transport:   redis://localhost:6379/0
+- ** ---------- .> results:     redis://localhost:6379/1
+- *** --- * --- .> concurrency: 12 (solo)
+-- ******* ---- .> task events: OFF (enable -E to monitor tasks in this worker)
+--- ***** ----- 
+ -------------- [queues]
+                .> notifications    exchange=default(direct) key=notifications
+                .> transcode        exchange=default(direct) key=transcode
+                .> uploads          exchange=default(direct) key=uploads
+
+[tasks]
+  . app.queue.tasks.hello_world
+  . app.queue.tasks.notificar_status
+  . app.queue.tasks.processar_upload
+  . app.queue.tasks.transcodificar_video
+
+[2026-10-06 20:24:45,550: INFO/MainProcess] Connected to redis://localhost:6379/0
+[2026-10-06 20:24:45,569: INFO/MainProcess] mingle: searching for neighbors
+[2026-10-06 20:24:46,656: INFO/MainProcess] mingle: all alone
+[2026-10-06 20:24:46,785: INFO/MainProcess] celery@Pietro-Not ready.
+ 
+ -------------- celery@Pietro-Not v5.6.3 (recovery)
+--- ***** ----- 
+-- ******* ---- Windows-11-10.0.26200-SP0 2026-10-06 21:16:40
+- *** --- * --- 
+- ** ---------- [config]
+- ** ---------- .> app:         projeto_a3:0x229354dfcb0
+- ** ---------- .> transport:   redis://localhost:6379/0
+- ** ---------- .> results:     redis://localhost:6379/1
+- *** --- * --- .> concurrency: 12 (solo)
+-- ******* ---- .> task events: OFF (enable -E to monitor tasks in this worker)
+--- ***** ----- 
+ -------------- [queues]
+                .> notifications    exchange=default(direct) key=notifications
+                .> transcode        exchange=default(direct) key=transcode
+                .> uploads          exchange=default(direct) key=uploads
+
+[tasks]
+  . app.queue.tasks.hello_world
+  . app.queue.tasks.notificar_status
+  . app.queue.tasks.processar_upload
+  . app.queue.tasks.transcodificar_video
+
+[2026-10-06 21:16:40,484: INFO/MainProcess] Connected to redis://localhost:6379/0
+[2026-10-06 21:16:40,505: INFO/MainProcess] mingle: searching for neighbors
+[2026-10-06 21:16:41,548: INFO/MainProcess] mingle: all alone
+[2026-10-06 21:16:41,634: INFO/MainProcess] celery@Pietro-Not ready.
+ 
+ -------------- celery@Pietro-Not v5.6.3 (recovery)
+--- ***** ----- 
+-- ******* ---- Windows-11-10.0.26200-SP0 2026-10-06 21:38:22
+- *** --- * --- 
+- ** ---------- [config]
+- ** ---------- .> app:         projeto_a3:0x2cb83d1fcb0
+- ** ---------- .> transport:   redis://localhost:6379/0
+- ** ---------- .> results:     redis://localhost:6379/1
+- *** --- * --- .> concurrency: 12 (solo)
+-- ******* ---- .> task events: OFF (enable -E to monitor tasks in this worker)
+--- ***** ----- 
+ -------------- [queues]
+                .> notifications    exchange=default(direct) key=notifications
+                .> transcode        exchange=default(direct) key=transcode
+                .> uploads          exchange=default(direct) key=uploads
+
+[tasks]
+  . app.queue.tasks.hello_world
+  . app.queue.tasks.notificar_status
+  . app.queue.tasks.processar_upload
+  . app.queue.tasks.transcodificar_video
+
+[2026-10-06 21:38:22,975: INFO/MainProcess] Connected to redis://localhost:6379/0
+[2026-10-06 21:38:22,986: INFO/MainProcess] mingle: searching for neighbors
+[2026-10-06 21:38:24,029: INFO/MainProcess] mingle: all alone
+[2026-10-06 21:38:24,092: INFO/MainProcess] celery@Pietro-Not ready.
+ 
+ -------------- celery@Pietro-Not v5.6.3 (recovery)
+--- ***** ----- 
+-- ******* ---- Windows-11-10.0.26200-SP0 2026-10-06 21:51:46
+- *** --- * --- 
+- ** ---------- [config]
+- ** ---------- .> app:         projeto_a3:0x1f63a80fcb0
+- ** ---------- .> transport:   redis://localhost:6379/0
+- ** ---------- .> results:     redis://localhost:6379/1
+- *** --- * --- .> concurrency: 12 (solo)
+-- ******* ---- .> task events: OFF (enable -E to monitor tasks in this worker)
+--- ***** ----- 
+ -------------- [queues]
+                .> notifications    exchange=default(direct) key=notifications
+                .> transcode        exchange=default(direct) key=transcode
+                .> uploads          exchange=default(direct) key=uploads
+
+[tasks]
+  . app.queue.tasks.hello_world
+  . app.queue.tasks.notificar_status
+  . app.queue.tasks.processar_upload
+  . app.queue.tasks.transcodificar_video
+
+[2026-10-06 21:51:46,130: INFO/MainProcess] Connected to redis://localhost:6379/0
+[2026-10-06 21:51:46,139: INFO/MainProcess] mingle: searching for neighbors
+[2026-10-06 21:51:47,183: INFO/MainProcess] mingle: all alone
+[2026-10-06 21:51:47,260: INFO/MainProcess] celery@Pietro-Not ready.
+ 
+ -------------- celery@Pietro-Not v5.6.3 (recovery)
+--- ***** ----- 
+-- ******* ---- Windows-11-10.0.26200-SP0 2026-10-08 19:48:10
+- *** --- * --- 
+- ** ---------- [config]
+- ** ---------- .> app:         projeto_a3:0x2ba07c0fcb0
+- ** ---------- .> transport:   redis://localhost:6379/0
+- ** ---------- .> results:     redis://localhost:6379/1
+- *** --- * --- .> concurrency: 12 (solo)
+-- ******* ---- .> task events: OFF (enable -E to monitor tasks in this worker)
+--- ***** ----- 
+ -------------- [queues]
+                .> notifications    exchange=default(direct) key=notifications
+                .> transcode        exchange=default(direct) key=transcode
+                .> uploads          exchange=default(direct) key=uploads
+
+[tasks]
+  . app.queue.tasks.hello_world
+  . app.queue.tasks.notificar_status
+  . app.queue.tasks.processar_upload
+  . app.queue.tasks.transcodificar_video
+
+[2026-10-08 19:48:14,814: ERROR/MainProcess] consumer: Cannot connect to redis://localhost:6379/0: Error 10061 connecting to localhost:6379. Nenhuma conexão pôde ser feita porque a máquina de destino as recusou ativamente..
+Trying again in 2.00 seconds... (1/100)
+
+[2026-10-08 19:48:20,911: ERROR/MainProcess] consumer: Cannot connect to redis://localhost:6379/0: Error 10061 connecting to localhost:6379. Nenhuma conexão pôde ser feita porque a máquina de destino as recusou ativamente..
+Trying again in 4.00 seconds... (2/100)
+
+[2026-10-08 19:48:29,002: ERROR/MainProcess] consumer: Cannot connect to redis://localhost:6379/0: Error 10061 connecting to localhost:6379. Nenhuma conexão pôde ser feita porque a máquina de destino as recusou ativamente..
+Trying again in 6.00 seconds... (3/100)
+
+[2026-10-08 19:48:39,070: ERROR/MainProcess] consumer: Cannot connect to redis://localhost:6379/0: Error 10061 connecting to localhost:6379. Nenhuma conexão pôde ser feita porque a máquina de destino as recusou ativamente..
+Trying again in 8.00 seconds... (4/100)
+
+ 
+ -------------- celery@Pietro-Not v5.6.3 (recovery)
+--- ***** ----- 
+-- ******* ---- Windows-11-10.0.26200-SP0 2026-10-08 19:48:50
+- *** --- * --- 
+- ** ---------- [config]
+- ** ---------- .> app:         projeto_a3:0x2a9d835fcb0
+- ** ---------- .> transport:   redis://localhost:6379/0
+- ** ---------- .> results:     redis://localhost:6379/1
+- *** --- * --- .> concurrency: 12 (solo)
+-- ******* ---- .> task events: OFF (enable -E to monitor tasks in this worker)
+--- ***** ----- 
+ -------------- [queues]
+                .> notifications    exchange=default(direct) key=notifications
+                .> transcode        exchange=default(direct) key=transcode
+                .> uploads          exchange=default(direct) key=uploads
+
+[tasks]
+  . app.queue.tasks.hello_world
+  . app.queue.tasks.notificar_status
+  . app.queue.tasks.processar_upload
+  . app.queue.tasks.transcodificar_video
+
+[2026-10-08 19:48:50,725: INFO/MainProcess] Connected to redis://localhost:6379/0
+[2026-10-08 19:48:50,736: INFO/MainProcess] mingle: searching for neighbors
+[2026-10-08 19:48:51,792: INFO/MainProcess] mingle: all alone
+[2026-10-08 19:48:51,897: INFO/MainProcess] celery@Pietro-Not ready.
+ 
+ -------------- celery@Pietro-Not v5.6.3 (recovery)
+--- ***** ----- 
+-- ******* ---- Windows-11-10.0.26200-SP0 2026-10-08 19:49:47
+- *** --- * --- 
+- ** ---------- [config]
+- ** ---------- .> app:         projeto_a3:0x16a4cb6fcb0
+- ** ---------- .> transport:   redis://localhost:6379/0
+- ** ---------- .> results:     redis://localhost:6379/1
+- *** --- * --- .> concurrency: 12 (solo)
+-- ******* ---- .> task events: OFF (enable -E to monitor tasks in this worker)
+--- ***** ----- 
+ -------------- [queues]
+                .> notifications    exchange=default(direct) key=notifications
+                .> transcode        exchange=default(direct) key=transcode
+                .> uploads          exchange=default(direct) key=uploads
+
+[tasks]
+  . app.queue.tasks.hello_world
+  . app.queue.tasks.notificar_status
+  . app.queue.tasks.processar_upload
+  . app.queue.tasks.transcodificar_video
+
+[2026-10-08 19:49:47,178: INFO/MainProcess] Connected to redis://localhost:6379/0
+[2026-10-08 19:49:47,198: INFO/MainProcess] mingle: searching for neighbors
+[2026-10-08 19:49:48,259: INFO/MainProcess] mingle: all alone
+[2026-10-08 19:49:48,337: INFO/MainProcess] celery@Pietro-Not ready.
+ 
+ -------------- celery@Pietro-Not v5.6.3 (recovery)
+--- ***** ----- 
+-- ******* ---- Windows-11-10.0.26200-SP0 2026-10-08 19:50:28
+- *** --- * --- 
+- ** ---------- [config]
+- ** ---------- .> app:         projeto_a3:0x1669cf3fcb0
+- ** ---------- .> transport:   redis://localhost:6379/0
+- ** ---------- .> results:     redis://localhost:6379/1
+- *** --- * --- .> concurrency: 12 (solo)
+-- ******* ---- .> task events: OFF (enable -E to monitor tasks in this worker)
+--- ***** ----- 
+ -------------- [queues]
+                .> notifications    exchange=default(direct) key=notifications
+                .> transcode        exchange=default(direct) key=transcode
+                .> uploads          exchange=default(direct) key=uploads
+
+[tasks]
+  . app.queue.tasks.hello_world
+  . app.queue.tasks.notificar_status
+  . app.queue.tasks.processar_upload
+  . app.queue.tasks.transcodificar_video
+
+[2026-10-08 19:50:28,206: INFO/MainProcess] Connected to redis://localhost:6379/0
+[2026-10-08 19:50:28,218: INFO/MainProcess] mingle: searching for neighbors
+[2026-10-08 19:50:29,272: INFO/MainProcess] mingle: all alone
+[2026-10-08 19:50:29,348: INFO/MainProcess] celery@Pietro-Not ready.
+ 
+ -------------- celery@Pietro-Not v5.6.3 (recovery)
+--- ***** ----- 
+-- ******* ---- Windows-11-10.0.26200-SP0 2026-10-08 19:53:12
+- *** --- * --- 
+- ** ---------- [config]
+- ** ---------- .> app:         projeto_a3:0x2779641fcb0
+- ** ---------- .> transport:   redis://localhost:6379/0
+- ** ---------- .> results:     redis://localhost:6379/1
+- *** --- * --- .> concurrency: 12 (solo)
+-- ******* ---- .> task events: OFF (enable -E to monitor tasks in this worker)
+--- ***** ----- 
+ -------------- [queues]
+                .> notifications    exchange=default(direct) key=notifications
+                .> transcode        exchange=default(direct) key=transcode
+                .> uploads          exchange=default(direct) key=uploads
+
+[tasks]
+  . app.queue.tasks.hello_world
+  . app.queue.tasks.notificar_status
+  . app.queue.tasks.processar_upload
+  . app.queue.tasks.transcodificar_video
+
+[2026-10-08 19:53:12,109: INFO/MainProcess] Connected to redis://localhost:6379/0
+[2026-10-08 19:53:12,119: INFO/MainProcess] mingle: searching for neighbors
+[2026-10-08 19:53:13,173: INFO/MainProcess] mingle: all alone
+[2026-10-08 19:53:13,228: INFO/MainProcess] celery@Pietro-Not ready.
+ 
+ -------------- celery@Pietro-Not v5.6.3 (recovery)
+--- ***** ----- 
+-- ******* ---- Windows-11-10.0.26200-SP0 2026-10-08 19:55:13
+- *** --- * --- 
+- ** ---------- [config]
+- ** ---------- .> app:         projeto_a3:0x21aab35fcb0
+- ** ---------- .> transport:   redis://localhost:6379/0
+- ** ---------- .> results:     redis://localhost:6379/1
+- *** --- * --- .> concurrency: 12 (solo)
+-- ******* ---- .> task events: OFF (enable -E to monitor tasks in this worker)
+--- ***** ----- 
+ -------------- [queues]
+                .> notifications    exchange=default(direct) key=notifications
+                .> transcode        exchange=default(direct) key=transcode
+                .> uploads          exchange=default(direct) key=uploads
+
+[tasks]
+  . app.queue.tasks.hello_world
+  . app.queue.tasks.notificar_status
+  . app.queue.tasks.processar_upload
+  . app.queue.tasks.transcodificar_video
+
+[2026-10-08 19:55:13,411: INFO/MainProcess] Connected to redis://localhost:6379/0
+[2026-10-08 19:55:13,421: INFO/MainProcess] mingle: searching for neighbors
+[2026-10-08 19:55:14,470: INFO/MainProcess] mingle: all alone
+[2026-10-08 19:55:14,562: INFO/MainProcess] celery@Pietro-Not ready.
+ 
+ -------------- celery@Pietro-Not v5.6.3 (recovery)
+--- ***** ----- 
+-- ******* ---- Windows-11-10.0.26200-SP0 2026-10-08 20:22:11
+- *** --- * --- 
+- ** ---------- [config]
+- ** ---------- .> app:         projeto_a3:0x22b0e6efcb0
+- ** ---------- .> transport:   redis://localhost:6379/0
+- ** ---------- .> results:     redis://localhost:6379/1
+- *** --- * --- .> concurrency: 12 (solo)
+-- ******* ---- .> task events: OFF (enable -E to monitor tasks in this worker)
+--- ***** ----- 
+ -------------- [queues]
+                .> notifications    exchange=default(direct) key=notifications
+                .> transcode        exchange=default(direct) key=transcode
+                .> uploads          exchange=default(direct) key=uploads
+
+[tasks]
+  . app.queue.tasks.hello_world
+  . app.queue.tasks.notificar_status
+  . app.queue.tasks.processar_upload
+  . app.queue.tasks.transcodificar_video
+
+[2026-10-08 20:22:11,906: INFO/MainProcess] Connected to redis://localhost:6379/0
+[2026-10-08 20:22:11,921: INFO/MainProcess] mingle: searching for neighbors
+[2026-10-08 20:22:12,997: INFO/MainProcess] mingle: all alone
+[2026-10-08 20:22:13,063: INFO/MainProcess] celery@Pietro-Not ready.
+[2026-10-08 20:33:29,264: WARNING/MainProcess] consumer: Connection to broker lost. Trying to re-establish the connection...
+Traceback (most recent call last):
+  File "C:\Users\cardo\Desktop\Faculdade\Quarto Semestre\A3 - 2026 - 2\projeto-a3-Garantia-da-Qualidade-de-Software-2026.2\.venv\Lib\site-packages\redis\retry.py", line 120, in call_with_retry
+    return do()
+  File "C:\Users\cardo\Desktop\Faculdade\Quarto Semestre\A3 - 2026 - 2\projeto-a3-Garantia-da-Qualidade-de-Software-2026.2\.venv\Lib\site-packages\redis\client.py", line 1308, in <lambda>
+    lambda: command(*args, **kwargs),
+            ~~~~~~~^^^^^^^^^^^^^^^^^
+  File "C:\Users\cardo\Desktop\Faculdade\Quarto Semestre\A3 - 2026 - 2\projeto-a3-Garantia-da-Qualidade-de-Software-2026.2\.venv\Lib\site-packages\redis\client.py", line 1395, in try_read
+    return conn.read_response(
+           ~~~~~~~~~~~~~~~~~~^
+        disconnect_on_error=False, push_request=True, timeout=read_timeout
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\cardo\Desktop\Faculdade\Quarto Semestre\A3 - 2026 - 2\projeto-a3-Garantia-da-Qualidade-de-Software-2026.2\.venv\Lib\site-packages\redis\connection.py", line 1407, in read_response
+    response = self._parser.read_response(
+        disable_decoding=disable_decoding,
+        push_request=push_request,
+        timeout=timeout,
+    )
+  File "C:\Users\cardo\Desktop\Faculdade\Quarto Semestre\A3 - 2026 - 2\projeto-a3-Garantia-da-Qualidade-de-Software-2026.2\.venv\Lib\site-packages\redis\_parsers\resp3.py", line 40, in read_response
+    result = self._read_response(
+        disable_decoding=disable_decoding,
+        push_request=push_request,
+        timeout=timeout,
+    )
+  File "C:\Users\cardo\Desktop\Faculdade\Quarto Semestre\A3 - 2026 - 2\projeto-a3-Garantia-da-Qualidade-de-Software-2026.2\.venv\Lib\site-packages\redis\_parsers\resp3.py", line 65, in _read_response
+    raw = self._buffer.readline(timeout=timeout)
+  File "C:\Users\cardo\Desktop\Faculdade\Quarto Semestre\A3 - 2026 - 2\projeto-a3-Garantia-da-Qualidade-de-Software-2026.2\.venv\Lib\site-packages\redis\_parsers\socket.py", line 117, in readline
+    self._read_from_socket(timeout=timeout)
+    ~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "C:\Users\cardo\Desktop\Faculdade\Quarto Semestre\A3 - 2026 - 2\projeto-a3-Garantia-da-Qualidade-de-Software-2026.2\.venv\Lib\site-packages\redis\_parsers\socket.py", line 67, in _read_from_socket
+    raise ConnectionError(SERVER_CLOSED_CONNECTION_ERROR)
+redis.exceptions.ConnectionError: Connection closed by server.
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\cardo\Desktop\Faculdade\Quarto Semestre\A3 - 2026 - 2\projeto-a3-Garantia-da-Qualidade-de-Software-2026.2\.venv\Lib\site-packages\celery\worker\consumer\consumer.py", line 346, in start
+    blueprint.start(self)
+    ~~~~~~~~~~~~~~~^^^^^^
+  File "C:\Users\cardo\Desktop\Faculdade\Quarto Semestre\A3 - 2026 - 2\projeto-a3-Garantia-da-Qualidade-de-Software-2026.2\.venv\Lib\site-packages\celery\bootsteps.py", line 116, in start
+    step.start(parent)
+    ~~~~~~~~~~^^^^^^^^
+  File "C:\Users\cardo\Desktop\Faculdade\Quarto Semestre\A3 - 2026 - 2\projeto-a3-Garantia-da-Qualidade-de-Software-2026.2\.venv\Lib\site-packages\celery\worker\consumer\consumer.py", line 788, in start
+    c.loop(*c.loop_args())
+    ~~~~~~^^^^^^^^^^^^^^^^
+  File "C:\Users\cardo\Desktop\Faculdade\Quarto Semestre\A3 - 2026 - 2\projeto-a3-Garantia-da-Qualidade-de-Software-2026.2\.venv\Lib\site-packages\celery\worker\loops.py", line 168, in synloop
+    _loop_cycle()
+    ~~~~~~~~~~~^^
+  File "C:\Users\cardo\Desktop\Faculdade\Quarto Semestre\A3 - 2026 - 2\projeto-a3-Garantia-da-Qualidade-de-Software-2026.2\.venv\Lib\site-packages\celery\worker\loops.py", line 157, in _loop_cycle
+    connection.drain_events(timeout=2.0)
+    ~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^
+  File "C:\Users\cardo\Desktop\Faculdade\Quarto Semestre\A3 - 2026 - 2\projeto-a3-Garantia-da-Qualidade-de-Software-2026.2\.venv\Lib\site-packages\kombu\connection.py", line 343, in drain_events
+    return self.transport.drain_events(self.connection, **kwargs)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\cardo\Desktop\Faculdade\Quarto Semestre\A3 - 2026 - 2\projeto-a3-Garantia-da-Qualidade-de-Software-2026.2\.venv\Lib\site-packages\kombu\transport\virtual\base.py", line 997, in drain_events
+    get(self._deliver, timeout=timeout)
+    ~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\cardo\Desktop\Faculdade\Quarto Semestre\A3 - 2026 - 2\projeto-a3-Garantia-da-Qualidade-de-Software-2026.2\.venv\Lib\site-packages\kombu\transport\redis.py", line 601, in get
+    ret = self.handle_event(fileno, event)
+  File "C:\Users\cardo\Desktop\Faculdade\Quarto Semestre\A3 - 2026 - 2\projeto-a3-Garantia-da-Qualidade-de-Software-2026.2\.venv\Lib\site-packages\kombu\transport\redis.py", line 583, in handle_event
+    return self.on_readable(fileno), self
+           ~~~~~~~~~~~~~~~~^^^^^^^^
+  File "C:\Users\cardo\Desktop\Faculdade\Quarto Semestre\A3 - 2026 - 2\projeto-a3-Garantia-da-Qualidade-de-Software-2026.2\.venv\Lib\site-packages\kombu\transport\redis.py", line 579, in on_readable
+    chan.handlers[type]()
+    ~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\cardo\Desktop\Faculdade\Quarto Semestre\A3 - 2026 - 2\projeto-a3-Garantia-da-Qualidade-de-Software-2026.2\.venv\Lib\site-packages\kombu\transport\redis.py", line 931, in _receive
+    ret.append(self._receive_one(c))
+               ~~~~~~~~~~~~~~~~~^^^
+  File "C:\Users\cardo\Desktop\Faculdade\Quarto Semestre\A3 - 2026 - 2\projeto-a3-Garantia-da-Qualidade-de-Software-2026.2\.venv\Lib\site-packages\kombu\transport\redis.py", line 941, in _receive_one
+    response = c.parse_response()
+  File "C:\Users\cardo\Desktop\Faculdade\Quarto Semestre\A3 - 2026 - 2\projeto-a3-Garantia-da-Qualidade-de-Software-2026.2\.venv\Lib\site-packages\redis\client.py", line 1399, in parse_response
+    response = self._execute(conn, try_read)
+  File "C:\Users\cardo\Desktop\Faculdade\Quarto Semestre\A3 - 2026 - 2\projeto-a3-Garantia-da-Qualidade-de-Software-2026.2\.venv\Lib\site-packages\redis\client.py", line 1307, in _execute
+    response = conn.retry.call_with_retry(
+        lambda: command(*args, **kwargs),
+        failure_callback,
+        with_failure_count=True,
+    )
+  File "C:\Users\cardo\Desktop\Faculdade\Quarto Semestre\A3 - 2026 - 2\projeto-a3-Garantia-da-Qualidade-de-Software-2026.2\.venv\Lib\site-packages\redis\retry.py", line 127, in call_with_retry
+    fail(error, failures)
+    ~~~~^^^^^^^^^^^^^^^^^
+  File "C:\Users\cardo\Desktop\Faculdade\Quarto Semestre\A3 - 2026 - 2\projeto-a3-Garantia-da-Qualidade-de-Software-2026.2\.venv\Lib\site-packages\redis\client.py", line 1304, in failure_callback
+    self._reconnect(conn, error, failure_count, start_time, command_name)
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\cardo\Desktop\Faculdade\Quarto Semestre\A3 - 2026 - 2\projeto-a3-Garantia-da-Qualidade-de-Software-2026.2\.venv\Lib\site-packages\redis\client.py", line 1278, in _reconnect
+    conn.connect()
+    ~~~~~~~~~~~~^^
+  File "C:\Users\cardo\Desktop\Faculdade\Quarto Semestre\A3 - 2026 - 2\projeto-a3-Garantia-da-Qualidade-de-Software-2026.2\.venv\Lib\site-packages\redis\connection.py", line 1028, in connect
+    self.retry.call_with_retry(
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        lambda: self.connect_check_health(
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<2 lines>...
+        lambda error: self.disconnect(error),
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\cardo\Desktop\Faculdade\Quarto Semestre\A3 - 2026 - 2\projeto-a3-Garantia-da-Qualidade-de-Software-2026.2\.venv\Lib\site-packages\redis\retry.py", line 132, in call_with_retry
+    raise error
+  File "C:\Users\cardo\Desktop\Faculdade\Quarto Semestre\A3 - 2026 - 2\projeto-a3-Garantia-da-Qualidade-de-Software-2026.2\.venv\Lib\site-packages\redis\retry.py", line 120, in call_with_retry
+    return do()
+  File "C:\Users\cardo\Desktop\Faculdade\Quarto Semestre\A3 - 2026 - 2\projeto-a3-Garantia-da-Qualidade-de-Software-2026.2\.venv\Lib\site-packages\redis\connection.py", line 1029, in <lambda>
+    lambda: self.connect_check_health(
+            ~~~~~~~~~~~~~~~~~~~~~~~~~^
+        check_health=True, retry_socket_connect=False
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ),
+    ^
+  File "C:\Users\cardo\Desktop\Faculdade\Quarto Semestre\A3 - 2026 - 2\projeto-a3-Garantia-da-Qualidade-de-Software-2026.2\.venv\Lib\site-packages\redis\connection.py", line 1083, in connect_check_health
+    self.on_connect_check_health(check_health=check_health)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\cardo\Desktop\Faculdade\Quarto Semestre\A3 - 2026 - 2\projeto-a3-Garantia-da-Qualidade-de-Software-2026.2\.venv\Lib\site-packages\redis\connection.py", line 1186, in on_connect_check_health
+    self.handshake_metadata = self.read_response()
+                              ~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\cardo\Desktop\Faculdade\Quarto Semestre\A3 - 2026 - 2\projeto-a3-Garantia-da-Qualidade-de-Software-2026.2\.venv\Lib\site-packages\redis\connection.py", line 1407, in read_response
+    response = self._parser.read_response(
+        disable_decoding=disable_decoding,
+        push_request=push_request,
+        timeout=timeout,
+    )
+  File "C:\Users\cardo\Desktop\Faculdade\Quarto Semestre\A3 - 2026 - 2\projeto-a3-Garantia-da-Qualidade-de-Software-2026.2\.venv\Lib\site-packages\redis\_parsers\resp3.py", line 40, in read_response
+    result = self._read_response(
+        disable_decoding=disable_decoding,
+        push_request=push_request,
+        timeout=timeout,
+    )
+  File "C:\Users\cardo\Desktop\Faculdade\Quarto Semestre\A3 - 2026 - 2\projeto-a3-Garantia-da-Qualidade-de-Software-2026.2\.venv\Lib\site-packages\redis\_parsers\resp3.py", line 65, in _read_response
+    raw = self._buffer.readline(timeout=timeout)
+  File "C:\Users\cardo\Desktop\Faculdade\Quarto Semestre\A3 - 2026 - 2\projeto-a3-Garantia-da-Qualidade-de-Software-2026.2\.venv\Lib\site-packages\redis\_parsers\socket.py", line 117, in readline
+    self._read_from_socket(timeout=timeout)
+    ~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "C:\Users\cardo\Desktop\Faculdade\Quarto Semestre\A3 - 2026 - 2\projeto-a3-Garantia-da-Qualidade-de-Software-2026.2\.venv\Lib\site-packages\redis\_parsers\socket.py", line 67, in _read_from_socket
+    raise ConnectionError(SERVER_CLOSED_CONNECTION_ERROR)
+redis.exceptions.ConnectionError: Connection closed by server.
+[2026-10-08 20:33:33,559: WARNING/MainProcess] C:\Users\cardo\Desktop\Faculdade\Quarto Semestre\A3 - 2026 - 2\projeto-a3-Garantia-da-Qualidade-de-Software-2026.2\.venv\Lib\site-packages\celery\worker\consumer\consumer.py:397: CPendingDeprecationWarning: 
+In Celery 5.1 we introduced an optional breaking change which
+on connection loss cancels all currently executed tasks with late acknowledgement enabled.
+These tasks cannot be acknowledged as the connection is gone, and the tasks are automatically redelivered
+back to the queue. You can enable this behavior using the worker_cancel_long_running_tasks_on_connection_loss
+setting. In Celery 5.1 it is set to False by default. The setting will be set to True by default in Celery 6.0.
+
+  warnings.warn(CANCEL_TASKS_BY_DEFAULT, CPendingDeprecationWarning)
+
+[2026-10-08 20:33:34,179: INFO/MainProcess] Connected to redis://localhost:6379/0
+[2026-10-08 20:33:34,235: INFO/MainProcess] mingle: searching for neighbors
+[2026-10-08 20:33:35,273: INFO/MainProcess] mingle: all alone
+[2026-10-08 20:33:36,961: WARNING/MainProcess] Substantial drift from celery@390eed382a41 may mean clocks are out of sync.  Current drift is 10800 seconds.  [orig: 2026-10-08 20:33:36.961124 recv: 2026-10-08 23:33:36.958515]
+[2026-10-08 20:33:36,971: INFO/MainProcess] sync with celery@390eed382a41
+ 
+ -------------- celery@Pietro-Not v5.6.3 (recovery)
+--- ***** ----- 
+-- ******* ---- Windows-11-10.0.26200-SP0 2026-10-08 20:35:18
+- *** --- * --- 
+- ** ---------- [config]
+- ** ---------- .> app:         projeto_a3:0x1bd66b1fcb0
+- ** ---------- .> transport:   redis://localhost:6379/0
+- ** ---------- .> results:     redis://localhost:6379/1
+- *** --- * --- .> concurrency: 12 (solo)
+-- ******* ---- .> task events: OFF (enable -E to monitor tasks in this worker)
+--- ***** ----- 
+ -------------- [queues]
+                .> notifications    exchange=default(direct) key=notifications
+                .> transcode        exchange=default(direct) key=transcode
+                .> uploads          exchange=default(direct) key=uploads
+
+[tasks]
+  . app.queue.tasks.hello_world
+  . app.queue.tasks.notificar_status
+  . app.queue.tasks.processar_upload
+  . app.queue.tasks.transcodificar_video
+
+[2026-10-08 20:35:18,458: INFO/MainProcess] Connected to redis://localhost:6379/0
+[2026-10-08 20:35:18,471: INFO/MainProcess] mingle: searching for neighbors
+[2026-10-08 20:35:19,519: INFO/MainProcess] mingle: sync with 1 nodes
+[2026-10-08 20:35:19,519: INFO/MainProcess] mingle: sync complete
+[2026-10-08 20:35:19,575: INFO/MainProcess] celery@Pietro-Not ready.
+[2026-10-08 20:35:21,149: WARNING/MainProcess] Substantial drift from celery@390eed382a41 may mean clocks are out of sync.  Current drift is 10800 seconds.  [orig: 2026-10-08 20:35:21.149301 recv: 2026-10-08 23:35:21.145703]
