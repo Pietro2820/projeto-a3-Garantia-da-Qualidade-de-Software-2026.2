@@ -24,6 +24,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
+from app.media import VIDEOS_DIR, garantir_diretorio, status_midia_completo
 from app.upload.router import router as upload_router
 from app.status.router import router as status_router
 from app.recommendations.router import router as recommendations_router
@@ -34,12 +35,12 @@ from app.recommendations.router import router as recommendations_router
 mimetypes.add_type("application/vnd.apple.mpegurl", ".m3u8")
 mimetypes.add_type("video/mp2t", ".ts")
 
-# Mesmas variáveis usadas pelos módulos de upload/transcodificação.
-# Padrão ancorado na RAIZ DO REPOSITÓRIO (e não no diretório atual do
+# Caminhos ancorados na RAIZ DO REPOSITÓRIO (e não no diretório atual do
 # terminal): assim `uvicorn app.main:app` funciona de qualquer cwd — antes,
 # iniciar fora da raiz fazia o mount do /player não existir (404 "Not Found").
+# VIDEOS_DIR vem de app/media.py, a fonte única compartilhada com o catálogo
+# (é lá que o `media_pronta` de cada vídeo é calculado).
 RAIZ_PROJETO = Path(__file__).resolve().parent.parent
-VIDEOS_DIR = Path(os.getenv("VIDEOS_DIR", RAIZ_PROJETO / "videos"))
 PLAYER_DIR = Path(
     os.getenv("PLAYER_DIR", RAIZ_PROJETO / "player-adaptativo" / "player-adaptativo")
 )
@@ -68,10 +69,25 @@ app.include_router(recommendations_router)
 def health():
     return {
         "status": "ok",
-        "rotas": ["/upload", "/status/{video_id}", "/videos/{video_id}/relacionados",
+        "rotas": ["/upload", "/status/{video_id}", "/media/{video_id}",
+                  "/catalogo", "/catalogo/{video_id}",
+                  "/videos/{video_id}/relacionados",
                   "/recomendacoes/{user_id}", "/trending", "/watch"],
         "player": "/player/",
+        "home": "/player/home.html",
     }
+
+
+@app.get("/media/{video_id}")
+def media(video_id: str):
+    """O que existe no disco para um vídeo (master.m3u8, thumbnail, segmentos).
+
+    O player chama isto quando o `hls_url` falha: assim ele consegue dizer
+    "o arquivo HLS não foi encontrado" (404 real) em vez de ficar num loop de
+    retry, e ainda mostra quantos segmentos a transcodificação gerou — útil
+    para o diagnóstico na apresentação.
+    """
+    return status_midia_completo(video_id)
 
 
 # ---------------------------------------------------------------------------
@@ -81,7 +97,7 @@ def health():
 
 # Garante que a pasta exista: StaticFiles levanta erro na inicialização se o
 # diretório não existir (e em dev ela só é criada na primeira transcodificação).
-VIDEOS_DIR.mkdir(parents=True, exist_ok=True)
+garantir_diretorio()
 app.mount("/videos", StaticFiles(directory=str(VIDEOS_DIR)), name="midia")
 
 # O player vem junto no repositório; se a pasta não estiver presente (ex: o
