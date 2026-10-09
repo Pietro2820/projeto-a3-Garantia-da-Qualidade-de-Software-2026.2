@@ -542,9 +542,15 @@ async function montarMensagemDeFalha(videoId, url) {
       );
     }
 
+    // Com bucket público configurado, /media devolve s3_master_url: a mídia
+    // deveria estar no Storage (Supabase/S3), não no disco da API — dizer
+    // "videos/{id}/" aqui mandaria o time procurar no lugar errado.
+    const onde = media?.s3_master_url
+      ? `nem no disco da API, nem no bucket (${media.s3_master_url})`
+      : `em videos/${videoId}/`;
     return (
       "Este vídeo ainda não está pronto para reprodução: os arquivos HLS não foram " +
-      `encontrados em videos/${videoId}/ (master.m3u8 ausente). Rode ` +
+      `encontrados ${onde} (master.m3u8 ausente). Rode ` +
       "`python scripts/demo_completo.py` ou envie o vídeo novamente pela home."
     );
   }
