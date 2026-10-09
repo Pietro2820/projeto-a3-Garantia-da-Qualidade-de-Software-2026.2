@@ -34,7 +34,10 @@
           <div class="player-error hidden" id="playerError">
             <strong>Não foi possível reproduzir este vídeo.</strong>
             <span id="playerErrorMessage">Verifique sua conexão e tente novamente.</span>
-            <button id="retryButton" type="button">Tentar novamente</button>
+            <div class="error-actions">
+              <button id="retryButton" type="button">Tentar novamente</button>
+              <a id="homeLink" href="./home.html">Abrir catálogo</a>
+            </div>
           </div>
 
           <div class="connection-alert hidden" id="connectionAlert">
@@ -102,18 +105,20 @@
         </section>
 
         <article class="video-info">
-          <h1 id="videoTitle">Aula demonstrativa — Streaming Adaptativo</h1>
+          <!-- Preenchido por js/player.js com os metadados que vêm do BANCO
+               (GET /catalogo/{id}): título, views, autor, data e descrição. -->
+          <h1 id="videoTitle">Nenhum vídeo carregado</h1>
           <div class="video-meta">
-            <span id="views">1.245 visualizações</span>
-            <span>•</span>
-            <span id="date">21 de setembro de 2026</span>
+            <span id="views"></span>
+            <span id="date"></span>
             <span>•</span>
             <span id="currentQuality">Qualidade: Auto</span>
           </div>
 
           <div class="description" id="description">
-            Este vídeo demonstra o player HLS adaptativo da plataforma educacional.
-            A qualidade pode ser alterada automaticamente conforme as condições de rede.
+            O catálogo é carregado do banco de dados pela API
+            (GET /catalogo). Escolha um vídeo na home ou aguarde a seleção
+            automática do primeiro vídeo pronto.
           </div>
         </article>
 
@@ -134,7 +139,9 @@
     </section>
   </main>
 
-  <!-- Configuração local (HLS_URL, API_BASE_URL, VIDEO_ID) — por dev, não commitar. -->
+  <!-- Origem da API (config.js). Aqui NÃO vai URL de vídeo: o catálogo e o
+       hls_url de cada vídeo vêm do banco, via API. Para um override local sem
+       commitar, crie um config.local.js e acrescente a tag <script> dele. -->
   <script src="./config.js"></script>
   <!--
     HLS.js vendalizado (versão fixada em 1.6.13, Apache-2.0).
