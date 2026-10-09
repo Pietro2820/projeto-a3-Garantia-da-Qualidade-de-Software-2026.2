@@ -26,7 +26,7 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
 from app.database.videos import buscar_video, listar_videos
-from app.media import master_existe
+from app.media import base_publica_s3, master_existe, origem_midia
 from app.recommendations import views_store
 from app.recommendations.engine import normalizar_tags, ordenar_por_similaridade
 
@@ -102,29 +102,49 @@ def _url_absoluta(request: Request | None, caminho: str) -> str:
     return f"{base}{caminho}"
 
 
+def _url_midia(request: Request | None, video_id: str, arquivo: str,
+               origem: str | None) -> str | None:
+    """URL de um arquivo de mídia do vídeo, na origem onde ele realmente está.
+
+    `origem` vem de `media.origem_midia()`:
+      * "s3"    — o HLS está no bucket público (Supabase Storage): devolve a
+                  URL pública ABSOLUTA. É o caso que estava quebrado — a API
+                  montava sempre o caminho local, o bucket não estava em lugar
+                  nenhum da resposta e o player recebia um 404 do próprio
+                  backend para um vídeo que existia no Storage.
+      * "local" / None — caminho servido pelo mount `/videos` da API, como
+                  antes (dev sem S3, testes e contrato antigo inalterados).
+    """
+    if origem == "s3":
+        return f"{base_publica_s3()}/videos/{video_id}/{arquivo}"
+    return _url_absoluta(request, f"/videos/{video_id}/{arquivo}")
+
+
 def _enriquecer(video: dict, score: float | None = None,
                 request: Request | None = None) -> dict:
     """Acrescenta ao metadado do contrato #2 o que o player usa no card.
 
-    `media_pronta` diz se o master.m3u8 EXISTE no disco. O `hls_url` continua
-    sendo montado sempre (contrato antigo, e o caminho é previsível), mas sem
-    essa flag o player não tem como saber se o arquivo está lá — e ficava num
-    loop de retry num 404 quando a transcodificação não tinha gerado a mídia
-    (ou a pasta videos/ estava vazia, já que ela não vai para o git).
+    `media_pronta` diz se o master.m3u8 EXISTE (no disco da API ou no bucket
+    público). `origem_midia` diz ONDE ele está — "local" ou "s3" — e é o que
+    determina se `hls_url` aponta para a API ou para o Supabase Storage. Sem
+    essas duas informações o player não tem como saber se o arquivo está lá, e
+    ficava num loop de retry num 404 quando a transcodificação não tinha
+    gerado a mídia (ou quando ela estava só no bucket).
     """
     video_id = video.get("video_id")
-    pronta = master_existe(video_id) if video_id else False
+    origem = origem_midia(video_id) if video_id else None
     resposta = {
         **video,
         "tags": normalizar_tags(video.get("tags")),
         "views": _views_seguras(video_id) if video_id else 0,
-        "media_pronta": pronta,
+        "media_pronta": origem is not None,
+        "origem_midia": origem,
         "hls_url": (
-            _url_absoluta(request, f"/videos/{video_id}/master.m3u8")
+            _url_midia(request, video_id, "master.m3u8", origem)
             if video_id else None
         ),
         "thumbnail_url": (
-            _url_absoluta(request, f"/videos/{video_id}/thumbnail.jpg")
+            _url_midia(request, video_id, "thumbnail.jpg", origem)
             if video_id else None
         ),
     }
