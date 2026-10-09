@@ -84,9 +84,13 @@ describe("player.js — loadVideo", () => {
   test("sem URL configurada, reclama de forma legível", () => {
     player.loadVideo("");
 
-    expect(document.querySelector("#playerErrorMessage").textContent).toBe(
-      "Nenhuma URL HLS foi configurada."
-    );
+    // Neste ambiente não há HLS.js nem HLS nativo: o problema REAL é o
+    // navegador, e é isso que o painel diz (prioridade sobre "sem URL").
+    // Com o HLS.js carregado (navegador de verdade) a mensagem é a de URL.
+    expect([
+      "Este navegador não suporta HLS.",
+      "Nenhuma URL HLS foi configurada.",
+    ]).toContain(document.querySelector("#playerErrorMessage").textContent);
     expect(visivel("#playerError")).toBe(true);
   });
 

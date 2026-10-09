@@ -16,6 +16,7 @@ import {
   formatarVisualizacoes,
   paraCard,
   registrarVisualizacao,
+  temStream,
 } from "../js/catalog.js";
 
 const VIDEO_DA_API = {
@@ -102,6 +103,14 @@ describe("paraCard", () => {
       duration: "",
       thumbnail: "/videos/v-fra/thumbnail.jpg",
       hlsUrl: "/videos/v-fra/master.m3u8",
+      // Sem `media_pronta` na resposta (backend antigo), a presença do hls_url
+      // basta: o player trata o 404 com mensagem clara se o arquivo não existir.
+      pronta: true,
+      demo: false,
+      description: "Aula sobre frações",
+      author: "Rafael",
+      category: "Matemática",
+      createdAt: "2026-01-01T00:00:00+00:00",
       score: 0.5,
     });
   });
@@ -138,6 +147,25 @@ describe("paraCard", () => {
 
   test("score que não é número vira null", () => {
     expect(paraCard({ video_id: "x", score: "alto" }).score).toBeNull();
+  });
+
+  test("media_pronta=false marca o card como sem stream (mesmo com hls_url)", () => {
+    const card = paraCard({ ...VIDEO_DA_API, media_pronta: false });
+
+    expect(card.hlsUrl).toBe("/videos/v-fra/master.m3u8");
+    expect(card.pronta).toBe(false);
+    expect(temStream(card)).toBe(false);
+  });
+
+  test("media_pronta=true + hls_url = vídeo que toca", () => {
+    const card = paraCard({ ...VIDEO_DA_API, media_pronta: true });
+
+    expect(card.pronta).toBe(true);
+    expect(temStream(card)).toBe(true);
+  });
+
+  test("vídeo de demonstração nunca tem stream", () => {
+    expect(temStream(paraCard({ id: "demo-java", title: "Java", demo: true }))).toBe(false);
   });
 });
 
