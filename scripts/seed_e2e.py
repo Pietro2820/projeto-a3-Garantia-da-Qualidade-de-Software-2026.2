@@ -63,13 +63,39 @@ VIDEOS = [
 ]
 
 
+def escrever_master(destino: Path) -> None:
+    """Escreve o master.m3u8 na RAIZ do vídeo (videos/{id}/master.m3u8).
+
+    É o layout do contrato do projeto (app/media.py e o docstring de
+    app/transcoding/ffmpeg_service.py): o master fica na raiz do vídeo e
+    aponta caminhos relativos "{resolucao}/playlist.m3u8". A API serve
+    hls_url = /videos/{id}/master.m3u8 — em qualquer outro lugar o player
+    recebe 404 e o vídeo não toca.
+    """
+    (destino / "master.m3u8").write_text(
+        "#EXTM3U\n#EXT-X-VERSION:3\n"
+        "#EXT-X-STREAM-INF:BANDWIDTH=464000,RESOLUTION=640x360\n360p/playlist.m3u8\n",
+        encoding="utf-8",
+    )
+
+
 def gerar_hls_com_ffmpeg(video_id: str) -> bool:
-    """Gera um HLS de 6s (vídeo sintético) usando o FFmpeg do sistema."""
+    """Gera um HLS de 6s (vídeo sintético) usando o FFmpeg do sistema.
+
+    Sem `-master_pl_name` de propósito: o FFmpeg escreve o master AO LADO da
+    playlist de saída (videos/{id}/360p/master.m3u8), mas o contrato do
+    projeto é o master na RAIZ (videos/{id}/master.m3u8). Com o master no
+    lugar errado, `media_pronta` dava False, o /catalogo?prontos=1 vinha vazio
+    e o hls_url devolvia 404 — exatamente o sintoma "o vídeo não roda no
+    player" em qualquer máquina COM FFmpeg (o README o lista como
+    pré-requisito, e o CI ubuntu-latest já traz instalado). Por isso o master
+    é escrito aqui, igual ao layout da transcodificação real.
+    """
     if not shutil.which("ffmpeg"):
         return False
 
     destino = media.diretorio_do_video(video_id)
-    destino.mkdir(parents=True, exist_ok=True)
+    (destino / "360p").mkdir(parents=True, exist_ok=True)
     comando = [
         "ffmpeg", "-y", "-loglevel", "error",
         "-f", "lavfi", "-i", "testsrc=size=640x360:rate=25:duration=6",
@@ -77,22 +103,19 @@ def gerar_hls_com_ffmpeg(video_id: str) -> bool:
         "-c:v", "libx264", "-preset", "veryfast", "-c:a", "aac",
         "-hls_time", "2", "-hls_playlist_type", "vod",
         "-hls_segment_filename", str(destino / "360p" / "segment_%03d.ts"),
-        "-master_pl_name", "master.m3u8",
         str(destino / "360p" / "playlist.m3u8"),
     ]
-    (destino / "360p").mkdir(parents=True, exist_ok=True)
-    return subprocess.run(comando, check=False).returncode == 0
+    if subprocess.run(comando, check=False).returncode != 0:
+        return False
+    escrever_master(destino)
+    return True
 
 
 def gerar_hls_minimo(video_id: str) -> None:
     """Sem FFmpeg: playlist mínima (basta para o player achar o master.m3u8)."""
     destino = media.diretorio_do_video(video_id) / "360p"
     destino.mkdir(parents=True, exist_ok=True)
-    (destino.parent / "master.m3u8").write_text(
-        "#EXTM3U\n#EXT-X-VERSION:3\n"
-        "#EXT-X-STREAM-INF:BANDWIDTH=464000,RESOLUTION=640x360\n360p/playlist.m3u8\n",
-        encoding="utf-8",
-    )
+    escrever_master(destino.parent)
     (destino / "playlist.m3u8").write_text(
         "#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-TARGETDURATION:4\n"
         "#EXTINF:4.0,\nsegment_000.ts\n#EXT-X-ENDLIST\n",
