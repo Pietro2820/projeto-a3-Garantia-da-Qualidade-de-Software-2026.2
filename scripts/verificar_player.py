@@ -6,8 +6,9 @@ está faltando, sem abrir o navegador:
 
   1. a API responde?                       (GET /)
   2. existem vídeos concluídos no banco?   (GET /catalogo)
-  3. quantos têm master.m3u8 no disco?     (campo media_pronta / GET /media/{id})
-  4. a playlist é servida com o tipo certo?(GET /videos/{id}/master.m3u8)
+  3. quantos têm master.m3u8 pronto?       (campo media_pronta — disco OU bucket)
+  4. a playlist é servida com o tipo certo?(GET no hls_url do catálogo: API ou
+                                            bucket público, conforme a origem)
   5. as páginas do player estão no ar?     (GET /player/home.html, /player/)
 
 Uso:
@@ -27,10 +28,10 @@ ERRO = "\033[31m✘\033[0m"
 AVISO = "\033[33m!\033[0m"
 
 
-def get(api: str, caminho: str, timeout: int = 10):
-    """(status, corpo) — corpo é dict/list quando dá para decodificar JSON."""
+def get_url(url: str, timeout: int = 10):
+    """(status, corpo, tipo) para uma URL COMPLETA (API ou bucket público)."""
     try:
-        with urllib.request.urlopen(f"{api}{caminho}", timeout=timeout) as resposta:
+        with urllib.request.urlopen(url, timeout=timeout) as resposta:
             texto = resposta.read().decode("utf-8", "replace")
             tipo = resposta.headers.get("content-type", "")
             try:
@@ -41,6 +42,11 @@ def get(api: str, caminho: str, timeout: int = 10):
         return exc.code, exc.read().decode("utf-8", "replace")[:200], ""
     except Exception as exc:  # conexão recusada, DNS, timeout
         return None, str(exc), ""
+
+
+def get(api: str, caminho: str, timeout: int = 10):
+    """(status, corpo, tipo) de uma rota da API."""
+    return get_url(f"{api}{caminho}", timeout)
 
 
 def linha(simbolo: str, texto: str) -> None:
@@ -83,7 +89,8 @@ def main() -> int:
     prontos = [v for v in catalogo.get("videos", []) if v.get("media_pronta")]
     sem_midia = [v for v in catalogo.get("videos", []) if not v.get("media_pronta")]
     if prontos:
-        linha(OK, f"{len(prontos)} vídeo(s) com master.m3u8 no disco (tocam no player)")
+        linha(OK, f"{len(prontos)} vídeo(s) com master.m3u8 pronto "
+                  f"(disco ou bucket — tocam no player)")
     if sem_midia:
         linha(AVISO, f"{len(sem_midia)} vídeo(s) 'completed' SEM mídia: "
                      + ", ".join(v.get("video_id", "?") for v in sem_midia))
@@ -91,18 +98,27 @@ def main() -> int:
         problemas += 1
 
     # 4 ------------------------------------------------------------------
+    # Sonda o hls_url QUE O CATÁLOGO DEVOLVE: caminho da API quando a mídia
+    # está no disco, URL pública do bucket (Supabase Storage/S3) quando está
+    # lá. Sondar sempre o caminho local dava 404 enganoso em vídeo de bucket.
     for video in prontos[:2]:
         video_id = video.get("video_id")
-        status, corpo, tipo = get(api, f"/videos/{video_id}/master.m3u8")
+        origem = video.get("origem_midia") or "local"
+        hls = video.get("hls_url") or f"/videos/{video_id}/master.m3u8"
+        url = hls if hls.startswith("http") else f"{api}{hls}"
+        rotulo = url[len(api):] if url.startswith(api) else url
+        status, corpo, tipo = get_url(url)
         if status == 200 and "#EXTM3U" in str(corpo):
-            linha(OK, f"/videos/{video_id}/master.m3u8 → 200 ({tipo.split(';')[0]})")
+            linha(OK, f"{rotulo} → 200 ({tipo.split(';')[0]}) [origem: {origem}]")
         else:
-            linha(ERRO, f"/videos/{video_id}/master.m3u8 → HTTP {status} ({tipo or 'sem tipo'})")
+            linha(ERRO, f"{rotulo} → HTTP {status} ({tipo or 'sem tipo'}) "
+                        f"[origem: {origem}]")
             problemas += 1
 
         status, corpo, _ = get(api, f"/media/{video_id}")
         if status == 200:
-            linha(OK, f"/media/{video_id} → {corpo.get('segmentos')} segmento(s), "
+            linha(OK, f"/media/{video_id} → origem={corpo.get('origem')}, "
+                      f"{corpo.get('segmentos')} segmento(s) no disco, "
                       f"thumbnail={corpo.get('thumbnail')}")
 
     # 5 ------------------------------------------------------------------
