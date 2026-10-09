@@ -26,6 +26,7 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
 from app.database.videos import buscar_video, listar_videos
+from app.media import master_existe
 from app.recommendations import views_store
 from app.recommendations.engine import normalizar_tags, ordenar_por_similaridade
 
@@ -103,12 +104,21 @@ def _url_absoluta(request: Request | None, caminho: str) -> str:
 
 def _enriquecer(video: dict, score: float | None = None,
                 request: Request | None = None) -> dict:
-    """Acrescenta ao metadado do contrato #2 o que o player usa no card."""
+    """Acrescenta ao metadado do contrato #2 o que o player usa no card.
+
+    `media_pronta` diz se o master.m3u8 EXISTE no disco. O `hls_url` continua
+    sendo montado sempre (contrato antigo, e o caminho é previsível), mas sem
+    essa flag o player não tem como saber se o arquivo está lá — e ficava num
+    loop de retry num 404 quando a transcodificação não tinha gerado a mídia
+    (ou a pasta videos/ estava vazia, já que ela não vai para o git).
+    """
     video_id = video.get("video_id")
+    pronta = master_existe(video_id) if video_id else False
     resposta = {
         **video,
         "tags": normalizar_tags(video.get("tags")),
         "views": _views_seguras(video_id) if video_id else 0,
+        "media_pronta": pronta,
         "hls_url": (
             _url_absoluta(request, f"/videos/{video_id}/master.m3u8")
             if video_id else None
@@ -252,14 +262,25 @@ def catalogo(
     request: Request,
     q: str = Query(default="", max_length=100, description="Busca por título ou tag"),
     limite: int = Query(default=50, ge=1, le=200),
+    prontos: bool = Query(
+        default=False,
+        description="true = só vídeos com master.m3u8 no disco (dá play de verdade)",
+    ),
 ):
     """Catálogo de vídeos prontos para assistir (status='completed').
 
     É o endpoint que alimenta a home do player (grade estilo YouTube) e a
     busca do topo da página. Sem Redis o catálogo continua funcionando —
     só as contagens de views ficam em zero.
+
+    `prontos=true` filtra também pela MÍDIA (arquivos HLS no disco). A home do
+    player usa isso para não exibir card de vídeo que não toca; o padrão fica
+    `false` para não mudar o comportamento de quem já consome a rota.
     """
     videos = _catalogo_pronto()
+
+    if prontos:
+        videos = [video for video in videos if master_existe(video.get("video_id"))]
 
     termo = q.strip().lower()
     if termo:

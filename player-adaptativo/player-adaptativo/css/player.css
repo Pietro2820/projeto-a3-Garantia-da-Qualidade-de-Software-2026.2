@@ -655,3 +655,67 @@ a.home-card .card-content {
 
 .upload-status.erro { color: #ff8f8f; }
 .upload-status.ok { color: #7dde92; }
+
+/* ---------------------------------------------------------------------------
+   Cards sem stream (vídeo ainda não transcodificado / card de demonstração)
+   --------------------------------------------------------------------------- */
+.video-card.indisponivel .thumbnail img {
+  opacity: .42;
+  filter: grayscale(.55);
+}
+
+.video-card.indisponivel .card-title { color: var(--muted); }
+
+.thumbnail-badge {
+  position: absolute;
+  top: 5px;
+  left: 5px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, .82);
+  border: 1px solid var(--border);
+  color: #ffd479;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .3px;
+  text-transform: uppercase;
+}
+
+.cards-empty {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.6;
+  padding: 10px 2px;
+}
+
+/* ---------------------------------------------------------------------------
+   Painel de erro do player — mensagem + ações (link pro catálogo)
+   --------------------------------------------------------------------------- */
+.player-error #playerErrorMessage {
+  max-width: 62ch;
+  color: var(--muted);
+  font-size: 13.5px;
+  line-height: 1.6;
+}
+
+.player-error strong { font-size: 15px; }
+
+.player-error .error-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.player-error a {
+  display: inline-block;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  padding: 9px 13px;
+  background: transparent;
+  color: var(--text);
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.player-error a:hover { background: var(--surface-2); }

@@ -59,11 +59,25 @@ FakeHls.Events = {
 FakeHls.ErrorTypes = { NETWORK_ERROR: "networkError", MEDIA_ERROR: "mediaError" };
 FakeHls.ErrorDetails = { BUFFER_STALLED_ERROR: "bufferStalledError" };
 
-/** Dubla o fetch por trecho de URL; rotas ausentes devolvem 404. */
-function mockarFetch(rotas) {
+/**
+ * Dubla o fetch por trecho de URL; rotas ausentes devolvem 404.
+ *
+ * `rotasExatas` tem precedência e casa com o caminho inteiro — necessário
+ * porque "/catalogo" (lista) e "/catalogo/{id}" (detalhe) compartilham prefixo
+ * e a resposta por trecho devolveria a lista para os dois.
+ */
+function mockarFetch(rotas, rotasExatas = {}) {
   global.fetch = jest.fn(async (url) => {
+    const alvo = String(url);
+
+    for (const [caminho, corpo] of Object.entries(rotasExatas)) {
+      if (alvo.endsWith(caminho)) {
+        return { ok: true, status: 200, json: async () => corpo };
+      }
+    }
+
     for (const [trecho, corpo] of Object.entries(rotas)) {
-      if (String(url).includes(trecho)) {
+      if (alvo.includes(trecho)) {
         return { ok: true, status: 200, json: async () => corpo };
       }
     }
@@ -106,9 +120,20 @@ const VIDEO_TRENDING = {
   views: 5,
 };
 
+/**
+ * O player atualiza a barra de endereço ao trocar de vídeo (?video={id}) e o
+ * jsdom mantém essa URL até o fim do ARQUIVO de teste. Sem este reset, um
+ * teste que clica num card contamina o seguinte (que passaria a abrir com
+ * ?video=...). 
+ */
+function resetarUrlDaPagina() {
+  window.history.replaceState({}, "", window.location.pathname);
+}
+
 beforeEach(() => {
   urlsCarregadas = [];
   instanciasHls = [];
+  resetarUrlDaPagina();
   delete window.PLAYER_CONFIG;
   jest.spyOn(console, "info").mockImplementation(() => {});
   jest.spyOn(console, "error").mockImplementation(() => {});
@@ -117,6 +142,7 @@ beforeEach(() => {
 afterEach(() => {
   jest.restoreAllMocks();
   document.body.innerHTML = "";
+  resetarUrlDaPagina();
   delete window.PLAYER_CONFIG;
 });
 
@@ -184,11 +210,14 @@ describe("player.js — auto-seleção com o catálogo da API", () => {
     expect(urlsCarregadas.at(-1)).toBe(`${API_BASE}/videos/v-his/master.m3u8`);
   });
 
-  test("usa um relacionado quando o trending vem vazio", async () => {
-    mockarFetch({
-      "/trending": { trending: [], motivo: "nenhuma visualização registrada ainda" },
+  test("clique num card toca o vídeo e passa a usar os relacionados DELE", async () => {
+    // É assim que os "relacionados" entram em jogo: a página abre com um vídeo
+    // (ou o usuário clica num card) e a sidebar/grade passam a vir de
+    // GET /videos/{id}/relacionados — sempre com dados do banco.
+    const fetchMock = mockarFetch({
+      "/trending": { trending: [] },
       "/relacionados": {
-        video_id: "demo-video",
+        video_id: "v-rel",
         relacionados: [{ ...VIDEO_TRENDING, video_id: "v-rel",
                          hls_url: `${API_BASE}/videos/v-rel/master.m3u8` }],
       },
@@ -197,7 +226,79 @@ describe("player.js — auto-seleção com o catálogo da API", () => {
 
     await subirPlayer();
 
-    expect(urlsCarregadas.at(-1)).toBe(`${API_BASE}/videos/v-rel/master.m3u8`);
+    window.dispatchEvent(new CustomEvent("video-selected", {
+      detail: {
+        id: "v-origem",
+        title: "Vídeo de origem",
+        pronta: true,
+        hlsUrl: `${API_BASE}/videos/v-origem/master.m3u8`,
+      },
+    }));
+
+    await new Promise((resolver) => setTimeout(resolver, 0));
+    await new Promise((resolver) => setTimeout(resolver, 0));
+
+    expect(urlsCarregadas.at(-1)).toBe(`${API_BASE}/videos/v-origem/master.m3u8`);
+    expect(fetchMock.mock.calls.some(([url]) =>
+      String(url).includes("/videos/v-origem/relacionados"))).toBe(true);
+  });
+
+  test("sem ?video= e sem relacionados: toca o primeiro vídeo do CATÁLOGO (banco)", async () => {
+    // Cenário real de hoje: /trending vazio (Redis sem visualizações) e nenhum
+    // vídeo de referência para pedir /relacionados. A grade inicial vem de
+    // GET /catalogo?prontos=1 — só vídeos com master.m3u8 no disco.
+    const fetchMock = mockarFetch(
+      {
+        "/trending": { trending: [], motivo: "nenhuma visualização registrada ainda" },
+        "/catalogo": {
+          videos: [{ ...VIDEO_TRENDING, video_id: "v-cat", titulo: "Do catálogo",
+                     media_pronta: true,
+                     hls_url: `${API_BASE}/videos/v-cat/master.m3u8` }],
+          total: 1,
+        },
+        "/watch": { registrado: true },
+      },
+      {
+        "/catalogo/v-cat": { ...VIDEO_TRENDING, video_id: "v-cat", titulo: "Do catálogo",
+                             media_pronta: true,
+                             hls_url: `${API_BASE}/videos/v-cat/master.m3u8` },
+      }
+    );
+
+    await subirPlayer();
+
+    expect(urlsCarregadas.at(-1)).toBe(`${API_BASE}/videos/v-cat/master.m3u8`);
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes("/catalogo?prontos=1")))
+      .toBe(true);
+  });
+
+  test("vídeo com media_pronta=false não entra em reprodução (evita 404 em loop)", async () => {
+    mockarFetch(
+      {
+        "/trending": { trending: [] },
+        "/catalogo": {
+          videos: [{ ...VIDEO_TRENDING, video_id: "v-sem-midia",
+                     media_pronta: false,
+                     hls_url: `${API_BASE}/videos/v-sem-midia/master.m3u8` }],
+          total: 1,
+        },
+        "/watch": { registrado: true },
+      },
+      {
+        "/catalogo/v-sem-midia": { ...VIDEO_TRENDING, video_id: "v-sem-midia",
+                                   media_pronta: false,
+                                   hls_url: `${API_BASE}/videos/v-sem-midia/master.m3u8` },
+        "/status/v-sem-midia": { video_id: "v-sem-midia", status: "processing" },
+        "/media/v-sem-midia": { video_id: "v-sem-midia", media_pronta: false, segmentos: 0 },
+      }
+    );
+
+    await subirPlayer();
+
+    expect(urlsCarregadas).toEqual([]);
+    expect(document.querySelector("#playerError").classList.contains("hidden")).toBe(false);
+    expect(document.querySelector("#playerErrorMessage").textContent)
+      .toContain("não está pronto");
   });
 
   test("PLAYER_CONFIG.HLS_URL explícito vence a auto-seleção", async () => {
@@ -215,17 +316,21 @@ describe("player.js — auto-seleção com o catálogo da API", () => {
     expect(urlsCarregadas).toEqual(["./videos/meu-stream.m3u8"]);
   });
 
-  test("backend fora do ar mantém o comportamento de demonstração", async () => {
+  test("backend fora do ar: mantém os cards de demonstração e não inventa URL", async () => {
     global.fetch = jest.fn(async () => {
       throw new TypeError("Failed to fetch");
     });
 
     await subirPlayer();
 
-    // Nenhuma URL da API foi carregada; só a tentativa com o demo local.
-    expect(urlsCarregadas).toEqual(["./videos/master.m3u8"]);
+    // Antes o player tentava "./videos/master.m3u8" (arquivo que não existe no
+    // repo) e entrava em loop de retry. Agora nenhuma URL é chutada: a página
+    // diz qual origem não respondeu e mantém os cards de exemplo.
+    expect(urlsCarregadas).toEqual([]);
     expect(document.querySelectorAll("#sidebarVideos article.video-card").length)
       .toBeGreaterThan(0);
+    expect(document.querySelector("#playerErrorMessage").textContent)
+      .toContain(API_BASE);
   });
 });
 
