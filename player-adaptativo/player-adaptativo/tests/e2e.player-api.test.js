@@ -103,6 +103,29 @@ async function flush(ciclos = 12) {
   }
 }
 
+/**
+ * Espera uma CONDIÇÃO assíncrona virar verdade (poll leve até `timeoutMs`).
+ *
+ * Por que não basta o `flush()`: aqui quem responde é a API REAL (fetch de
+ * rede), e o número de ciclos de evento até a resposta chegar varia com a
+ * carga do runner. Num CI ocupado os 12 ciclos do `flush()` podem terminar
+ * ANTES da resposta — a run #48 falhou exatamente assim ("preenche título"
+ * assertou com o fetch ainda em voo). Esperar a condição remove a corrida
+ * sem enfraquecer nenhuma asserção: se o comportamento quebrar de verdade,
+ * a condição nunca vira verdadeira e o teste falha do mesmo jeito.
+ *
+ * `timeoutMs` fica abaixo do timeout padrão do Jest por teste (5s) para que
+ * a falha apareça como asserção (mensagem útil), não como "exceeded timeout".
+ */
+async function esperarPor(condicao, { timeoutMs = 4_000, intervaloMs = 25 } = {}) {
+  const limite = Date.now() + timeoutMs;
+  while (Date.now() < limite) {
+    if (condicao()) return true;
+    await new Promise((resolver) => setTimeout(resolver, intervaloMs));
+  }
+  return condicao();
+}
+
 talvez("E2E — watch page contra a API real", () => {
   beforeEach(async () => {
     jest.spyOn(console, "info").mockImplementation(() => {});
@@ -119,6 +142,7 @@ talvez("E2E — watch page contra a API real", () => {
   test("abre tocando o vídeo pronto que veio do banco (sem nenhuma URL no JS)", async () => {
     await import("../js/player.js");
     await flush();
+    await esperarPor(() => urlsCarregadas.length >= 1);
 
     expect(urlsCarregadas).toHaveLength(1);
     expect(urlsCarregadas[0]).toMatch(/^https?:\/\/[^/]+\/videos\/[^/]+\/master\.m3u8$/);
@@ -130,6 +154,10 @@ talvez("E2E — watch page contra a API real", () => {
   test("preenche título com os metadados do banco", async () => {
     await import("../js/player.js");
     await flush();
+    await esperarPor(() => {
+      const t = document.querySelector("#videoTitle").textContent;
+      return t !== "Nenhum vídeo carregado" && t.length > 3;
+    });
 
     const titulo = document.querySelector("#videoTitle").textContent;
     expect(titulo).not.toBe("Nenhum vídeo carregado");
@@ -151,6 +179,9 @@ talvez("E2E — watch page contra a API real", () => {
     jest.resetModules();
     await import("../js/player.js");
     await flush();
+    await esperarPor(
+      () => document.querySelector("#playerErrorMessage").textContent.includes("não está pronto")
+    );
 
     expect(urlsCarregadas).toEqual([]);
     expect(document.querySelector("#playerError").classList.contains("hidden")).toBe(false);
@@ -160,6 +191,7 @@ talvez("E2E — watch page contra a API real", () => {
   test("a playlist do vídeo pronto é entregue pela API com o Content-Type certo", async () => {
     await import("../js/player.js");
     await flush();
+    await esperarPor(() => urlsCarregadas.length >= 1);
 
     const resposta = await global.fetch(urlsCarregadas[0]);
     expect(resposta.ok).toBe(true);
@@ -185,6 +217,7 @@ talvez("E2E — home contra a API real", () => {
   test("lista apenas vídeos que tocam (prontos=1) e linka para a watch page", async () => {
     await import("../js/home.js");
     await flush();
+    await esperarPor(() => document.querySelectorAll("#homeGrid a.home-card").length > 0);
 
     const cards = [...document.querySelectorAll("#homeGrid a.home-card")];
     expect(cards.length).toBeGreaterThan(0);
@@ -199,10 +232,16 @@ talvez("E2E — home contra a API real", () => {
   test("busca por tag filtra no servidor e atualiza o título da seção", async () => {
     await import("../js/home.js");
     await flush();
+    await esperarPor(() => document.querySelectorAll("#homeGrid a.home-card").length > 0);
 
     document.querySelector("#searchInput").value = "matemática";
     document.querySelector("#searchForm").dispatchEvent(new Event("submit", { cancelable: true }));
     await flush();
+    await esperarPor(
+      () =>
+        document.querySelector("#homeTitle").textContent.includes("matemática") &&
+        document.querySelectorAll("#homeGrid a.home-card").length > 0
+    );
 
     expect(document.querySelector("#homeTitle").textContent).toContain("matemática");
     expect(document.querySelectorAll("#homeGrid a.home-card").length).toBeGreaterThan(0);
