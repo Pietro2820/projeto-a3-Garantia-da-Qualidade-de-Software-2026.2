@@ -101,28 +101,56 @@ export async function registerWatch(payload) {
 /**
  * Envia um vídeo novo (multipart/form-data) para o POST /upload.
  *
- * Não passa pelo requestJson de propósito: ele fixaria Content-Type
- * application/json e quebraria o boundary do multipart — aqui o próprio
- * navegador define o cabeçalho certo a partir do FormData.
+ * Usa XMLHttpRequest (e não fetch) de propósito: o fetch não expõe progresso
+ * de UPLOAD — só de download. Com XHR, `xhr.upload` emite eventos "progress"
+ * que alimentam a barra do modal (js/upload.js), mostrando quanto do arquivo
+ * já foi enviado em vez de uma tela "travada" sem feedback.
+ *
+ * Contrato mantido do version anterior (fetch):
+ *   - NÃO define Content-Type: o navegador monta o boundary do multipart;
+ *   - resolve com o corpo JSON da resposta (video_id, fila, status_url...);
+ *   - rejeita com Error(detail legível da API) em status não-2xx.
+ *
+ * `onProgress({ enviado, total, fracao })` é opcional — chamadas com
+ * lengthComputable durante o envio (fracao vai de 0 a 1).
  */
-export async function uploadVideo(formData) {
-  const response = await fetch(`${API_BASE_URL}/upload`, {
-    method: "POST",
-    body: formData
+export function uploadVideo(formData, onProgress) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", `${API_BASE_URL}/upload`);
+
+    xhr.upload.addEventListener("progress", (evento) => {
+      if (!onProgress || !evento.lengthComputable) return;
+      onProgress({
+        enviado: evento.loaded,
+        total: evento.total,
+        fracao: evento.total > 0 ? evento.loaded / evento.total : 0,
+      });
+    });
+
+    xhr.addEventListener("load", () => {
+      let corpo = null;
+      try {
+        corpo = JSON.parse(xhr.responseText);
+      } catch (error) {
+        // resposta não-JSON (proxy? erro HTML?) — corpo segue null
+      }
+      if (xhr.status >= 200 && xhr.status < 300) {
+        resolve(corpo);
+        return;
+      }
+      reject(new Error(corpo?.detail || `API respondeu com HTTP ${xhr.status}`));
+    });
+
+    xhr.addEventListener("error", () => {
+      reject(new Error("Falha de rede ao enviar o vídeo para a API (ela está no ar?)"));
+    });
+    xhr.addEventListener("abort", () => {
+      reject(new Error("Envio do vídeo cancelado"));
+    });
+
+    xhr.send(formData);
   });
-
-  if (!response.ok) {
-    let detalhe = `API respondeu com HTTP ${response.status}`;
-    try {
-      const corpo = await response.json();
-      if (corpo?.detail) detalhe = corpo.detail;
-    } catch (error) {
-      // corpo não era JSON: mantém a mensagem genérica
-    }
-    throw new Error(detalhe);
-  }
-
-  return response.json();
 }
 
 /**

@@ -216,6 +216,18 @@ GET /videos/{id}/master.m3u8 ──► HLS.js toca o vídeo adaptativo
 POST /watch ──► alimenta o ranking e as recomendações do usuário
 ```
 
+### Upload pela home: modal com barra de progresso
+
+O botão **Enviar vídeo** (home) abre o modal que faz o `POST /upload` multipart
+via `XMLHttpRequest` — é o que permite mostrar **a barra de progresso com o %
+e os MB já enviados** (o `fetch` não expõe progresso de upload). Terminado o
+envio, o modal faz o polling de `GET /status/{id}` e mostra cada fase
+(fila → processando → publicado).
+
+Se a fila estiver fora do ar (a API responde `fila: "indisponivel"`) ou o
+status ficar preso em `pending` por 90s (nenhum worker consumindo), o modal
+**avisa na hora o que verificar** em vez de ficar travado até o timeout.
+
 ## Modo rápido: subir tudo com um comando só
 
 Em vez de abrir 4 terminais (Redis, worker, API, testes), use o launcher — com o venv ativado:
