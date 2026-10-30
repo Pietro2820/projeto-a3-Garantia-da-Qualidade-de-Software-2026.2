@@ -283,6 +283,7 @@ player faz na tela quando o play falha.
 | O player diz "os arquivos HLS não foram encontrados" | Vídeo `completed` no banco, mas a pasta `videos/{id}/` não tem `master.m3u8` (ela não vai para o git — é gerada localmente) | `GET /media/{video_id}` mostra o que existe no disco; rode `python scripts/demo_completo.py` ou reenvie o vídeo pela home |
 | A home está vazia, mas o `/catalogo` tem vídeos | Todos estão sem mídia (`prontos=1` filtra) ou com status diferente de `completed` | `GET /catalogo` (sem filtro) mostra todos; confira `media_pronta` de cada um |
 | "A API não respondeu em http://localhost:8000" | Backend fora do ar, ou o front aberto em outra origem sem CORS | Suba `uvicorn app.main:app --reload`; se usar Live Server, confira o `API_BASE_URL` do `config.js` |
+| **Travado na tela de upload** ("Processando..." / "Transcodificando..." que nunca termina) | O Redis e/ou o worker Celery não estão rodando: o upload até é salvo (a API responde `"fila": "indisponivel"`), mas nada processa a tarefa e o `/status` fica em `pending` para sempre | Suba a stack completa: `docker compose up -d --build` (Opção A) ou `python scripts/subir_tudo.py` (Opção B). O modal agora **avisa em ~90s** em vez de ficar 10 min travado. No Docker, use o `docker-compose.yml` atualizado: sem os volumes compartilhados (`uploads`, `videos`, `data`), o worker não enxerga o arquivo enviado e a transcodificação falha |
 
 ## Estrutura de pastas
 

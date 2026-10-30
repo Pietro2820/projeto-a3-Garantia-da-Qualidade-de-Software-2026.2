@@ -14,6 +14,11 @@ services:
     environment:
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/1
+    # Volumes COMPARTILHADOS com a api (ver bloco `volumes:` no fim).
+    volumes:
+      - uploads:/app/uploads
+      - videos:/app/videos
+      - dados:/app/data
     depends_on:
       - redis
 
@@ -28,6 +33,22 @@ services:
     environment:
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/1
+    volumes:
+      - uploads:/app/uploads
+      - videos:/app/videos
+      - dados:/app/data
     depends_on:
       - redis
       - celery-worker
+
+# Sem estes volumes, api e celery-worker são containers ISOLADOS: o upload
+# salva o original em /app/uploads DENTRO do container da api e o worker não
+# encontra o arquivo no mesmo caminho do container dele — a transcodificação
+# falha ("arquivo ausente") ou a tarefa nunca é processada, e o modal de
+# upload fica travado. O mesmo vale para /app/videos (a api precisa enxergar
+# o HLS que o worker gerou para servir em /videos e listar no catálogo) e
+# /app/data (banco JSON local de fallback, sem Supabase).
+volumes:
+  uploads:
+  videos:
+  dados:

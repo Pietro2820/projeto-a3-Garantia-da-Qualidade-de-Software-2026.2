@@ -17,6 +17,11 @@ import { getVideoStatus, uploadVideo } from "./api.js";
 
 const INTERVALO_PADRAO_MS = 2000;
 const TIMEOUT_PADRAO_MS = 10 * 60 * 1000;
+// "pending" por muito tempo significa que NENHUM worker pegou a tarefa
+// (Redis/Celery desligados, worker sem acesso ao arquivo, etc.). Não faz
+// sentido prender o usuário no modal pelos 10 min do timeout de
+// transcodificação: depois deste prazo, avisamos o que verificar.
+const TIMEOUT_FILA_PADRAO_MS = 90 * 1000;
 
 /**
  * Polling de /status/{video_id} até completed/failed.
@@ -25,10 +30,16 @@ const TIMEOUT_PADRAO_MS = 10 * 60 * 1000;
  */
 export async function aguardarProcessamento(
   videoId,
-  { onStatus, intervaloMs = INTERVALO_PADRAO_MS, timeoutMs = TIMEOUT_PADRAO_MS } = {}
+  {
+    onStatus,
+    intervaloMs = INTERVALO_PADRAO_MS,
+    timeoutMs = TIMEOUT_PADRAO_MS,
+    timeoutFilaMs = TIMEOUT_FILA_PADRAO_MS,
+  } = {}
 ) {
   const inicio = Date.now();
   let ultimo = null;
+  let inicioPendente = null;
 
   while (Date.now() - inicio < timeoutMs) {
     let status = null;
@@ -47,6 +58,22 @@ export async function aguardarProcessamento(
       throw new Error(status.erro || "A transcodificação falhou no servidor");
     }
 
+    // Watchdog da fila: enquanto o status não sai de "pending" (ou o vídeo
+    // nem aparece no /status), ninguém está processando. Esperar os 10 min
+    // inteiros só deixa o modal "travado" sem explicação.
+    if (!status || status.status === "pending") {
+      if (inicioPendente === null) inicioPendente = Date.now();
+      if (Date.now() - inicioPendente >= timeoutFilaMs) {
+        throw new Error(
+          `Nenhum worker processou o vídeo em ${Math.round(timeoutFilaMs / 1000)}s ` +
+            '(status parado em "pending"). Verifique se o Redis e o worker Celery ' +
+            "estão rodando: `docker compose up -d` (ou `python scripts/subir_tudo.py`)."
+        );
+      }
+    } else {
+      inicioPendente = null;
+    }
+
     await new Promise((resolver) => setTimeout(resolver, intervaloMs));
   }
 
@@ -59,6 +86,16 @@ export async function aguardarProcessamento(
 export async function enviarEAcompanhar(formData, callbacks = {}, opcoes = {}) {
   callbacks.onEnviando?.();
   const corpo = await uploadVideo(formData);
+  // A API responde fila="indisponivel" quando não conseguiu publicar a task
+  // (Redis/broker fora do ar). O arquivo até foi salvo, mas NADA vai
+  // transcodificá-lo — seguir para o polling deixaria o modal 10 min travado.
+  if (corpo?.fila === "indisponivel") {
+    throw new Error(
+      "Arquivo recebido pela API, mas a fila de processamento está fora do ar " +
+        "(Redis/Celery). Suba os serviços com `docker compose up -d` (ou " +
+        "`python scripts/subir_tudo.py`) e envie o vídeo novamente."
+    );
+  }
   callbacks.onProcessando?.(corpo);
   const status = await aguardarProcessamento(corpo.video_id, {
     onStatus: callbacks.onStatus,
@@ -72,7 +109,7 @@ export async function enviarEAcompanhar(formData, callbacks = {}, opcoes = {}) {
  * Devolve { abrir, fechar } ou null quando a página não tem o modal
  * (a watch page index.html não tem — e está tudo bem).
  */
-export function iniciarUiUpload({ onSucesso, intervaloMs, timeoutMs, delayFecharMs = 1200 } = {}) {
+export function iniciarUiUpload({ onSucesso, intervaloMs, timeoutMs, timeoutFilaMs, delayFecharMs = 1200 } = {}) {
   const modal = document.querySelector("#uploadModal");
   const form = document.querySelector("#uploadForm");
   if (!modal || !form) return null;
@@ -123,9 +160,14 @@ export function iniciarUiUpload({ onSucesso, intervaloMs, timeoutMs, delayFechar
             setStatus(
               "Upload concluído! Transcodificando em HLS — de segundos a alguns minutos..."
             ),
-          onStatus: (status) => setStatus(`Processando... status: ${status.status}`),
+          onStatus: (status) =>
+            setStatus(
+              status.status === "pending"
+                ? "Na fila, aguardando um worker iniciar o processamento..."
+                : `Processando... status: ${status.status}`
+            ),
         },
-        { intervaloMs, timeoutMs }
+        { intervaloMs, timeoutMs, timeoutFilaMs }
       );
 
       setStatus("Vídeo pronto e publicado no catálogo!", "ok");
