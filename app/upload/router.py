@@ -80,7 +80,7 @@ def _enfileirar_processamento(video_id: str, file_path: str) -> str:
 
 
 @router.post("/upload")
-async def upload_video(
+def upload_video(
     file: UploadFile = File(...),
     titulo: str = Form(...),
     autor: str = Form(...),
@@ -88,6 +88,11 @@ async def upload_video(
     tags: str = Form(""),
     categoria: str = Form(""),
 ):
+    # `def` (e não `async def`) de propósito: o FastAPI roda handlers
+    # síncronos em threadpool. Esta rota faz I/O bloqueante pesado (seek +
+    # shutil.copyfileobj de até 500MB) — como `async def`, ela congelaria o
+    # event loop inteiro durante a cópia, travando junto o polling de
+    # /status e o resto da API (sintoma: interface "travada" no upload).
     filename = file.filename or ""
     extension = Path(filename).suffix.lower()
 

@@ -224,6 +224,64 @@ describe("upload.js — erros", () => {
 
     expect(document.querySelector("#uploadStatus").textContent).toContain("FFmpeg ausente");
   });
+
+  test("fila indisponível (Redis/worker desligados) avisa na hora em vez de travar no polling", async () => {
+    global.fetch = jest.fn(async (url) => {
+      const alvo = String(url);
+      if (alvo.endsWith("/upload")) {
+        return {
+          ok: true, status: 200,
+          json: async () => ({ video_id: "v-novo", status: "pending", fila: "indisponivel" }),
+        };
+      }
+      return { ok: true, status: 200, json: async () => ({ videos: [], total: 0 }) };
+    });
+    subirHomeComModal();
+    await subirUiUpload();
+
+    preencherFormulario();
+    document.querySelector("#uploadForm")
+      .dispatchEvent(new Event("submit", { cancelable: true }));
+    await flush(4);
+
+    const status = document.querySelector("#uploadStatus");
+    expect(status.textContent).toContain("fila de processamento está fora do ar");
+    expect(status.classList.contains("erro")).toBe(true);
+    // O bug original: mesmo sem fila, o modal ficava pollando /status por 10 min.
+    expect(global.fetch.mock.calls.some(([url]) => String(url).includes("/status/")))
+      .toBe(false);
+  });
+
+  test("status preso em pending vira erro com orientação (watchdog da fila)", async () => {
+    global.fetch = jest.fn(async (url) => {
+      const alvo = String(url);
+      if (alvo.endsWith("/upload")) {
+        return {
+          ok: true, status: 200,
+          json: async () => ({ video_id: "v-novo", status: "pending", fila: "enfileirado" }),
+        };
+      }
+      if (alvo.includes("/status/v-novo")) {
+        return {
+          ok: true, status: 200,
+          json: async () => ({ video_id: "v-novo", status: "pending" }),
+        };
+      }
+      return { ok: true, status: 200, json: async () => ({ videos: [], total: 0 }) };
+    });
+    subirHomeComModal();
+    await subirUiUpload({ timeoutFilaMs: 40, intervaloMs: 5 });
+
+    preencherFormulario();
+    document.querySelector("#uploadForm")
+      .dispatchEvent(new Event("submit", { cancelable: true }));
+    await new Promise((resolver) => setTimeout(resolver, 400));
+
+    const status = document.querySelector("#uploadStatus");
+    expect(status.textContent).toContain("Nenhum worker processou o vídeo");
+    expect(status.textContent).toContain("pending");
+    expect(status.classList.contains("erro")).toBe(true);
+  }, 10000);
 });
 
 describe("api.js — uploadVideo (multipart)", () => {
