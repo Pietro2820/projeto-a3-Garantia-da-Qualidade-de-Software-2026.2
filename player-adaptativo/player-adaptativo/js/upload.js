@@ -82,10 +82,21 @@ export async function aguardarProcessamento(
   );
 }
 
+/** Formata bytes para texto curto do modal ("4.2 MB de 120.0 MB"). */
+export function formatarBytes(bytes) {
+  if (!Number.isFinite(bytes) || bytes < 0) return "?";
+  if (bytes < 1024) return `${bytes} B`;
+  const kb = bytes / 1024;
+  if (kb < 1024) return `${Math.round(kb)} KB`;
+  const mb = kb / 1024;
+  if (mb < 1024) return `${mb.toFixed(1)} MB`;
+  return `${(mb / 1024).toFixed(2)} GB`;
+}
+
 /** Envia o FormData e acompanha o processamento até o fim. */
 export async function enviarEAcompanhar(formData, callbacks = {}, opcoes = {}) {
   callbacks.onEnviando?.();
-  const corpo = await uploadVideo(formData);
+  const corpo = await uploadVideo(formData, callbacks.onProgress);
   // A API responde fila="indisponivel" quando não conseguiu publicar a task
   // (Redis/broker fora do ar). O arquivo até foi salvo, mas NADA vai
   // transcodificá-lo — seguir para o polling deixaria o modal 10 min travado.
@@ -118,6 +129,8 @@ export function iniciarUiUpload({ onSucesso, intervaloMs, timeoutMs, timeoutFila
   const botaoFechar = document.querySelector("#uploadClose");
   const statusEl = document.querySelector("#uploadStatus");
   const botaoSubmit = document.querySelector("#uploadSubmit");
+  const barraEl = document.querySelector("#uploadProgress");
+  const barraFill = document.querySelector("#uploadProgressFill");
 
   const abrir = () => modal.classList.remove("hidden");
   const fechar = () => modal.classList.add("hidden");
@@ -131,6 +144,27 @@ export function iniciarUiUpload({ onSucesso, intervaloMs, timeoutMs, timeoutFila
   function setStatus(texto, classe = "") {
     statusEl.textContent = texto;
     statusEl.className = `upload-status ${classe}`.trim();
+  }
+
+  /** Barra de progresso do ENVIO (fase POST /upload — eventos do XHR). */
+  function atualizarBarra({ fracao = 0, enviado = 0, total = 0 } = {}) {
+    const pct = Math.max(0, Math.min(100, Math.round(fracao * 100)));
+    if (barraEl) {
+      barraEl.classList.remove("hidden");
+      barraEl.setAttribute("aria-valuenow", String(pct));
+    }
+    if (barraFill) barraFill.style.width = `${pct}%`;
+    setStatus(
+      total > 0
+        ? `Enviando arquivo... ${pct}% (${formatarBytes(enviado)} de ${formatarBytes(total)})`
+        : `Enviando arquivo... ${pct}% (${formatarBytes(enviado)} enviados)`
+    );
+  }
+
+  function esconderBarra() {
+    barraEl?.classList.add("hidden");
+    barraEl?.setAttribute("aria-valuenow", "0");
+    if (barraFill) barraFill.style.width = "0%";
   }
 
   form.addEventListener("submit", async (event) => {
@@ -151,15 +185,19 @@ export function iniciarUiUpload({ onSucesso, intervaloMs, timeoutMs, timeoutFila
     dados.append("categoria", document.querySelector("#uploadCategoria").value.trim());
 
     botaoSubmit.disabled = true;
+    esconderBarra();
     try {
       await enviarEAcompanhar(
         dados,
         {
           onEnviando: () => setStatus("Enviando arquivo para a API..."),
-          onProcessando: () =>
+          onProgress: atualizarBarra,
+          onProcessando: () => {
+            esconderBarra();
             setStatus(
               "Upload concluído! Transcodificando em HLS — de segundos a alguns minutos..."
-            ),
+            );
+          },
           onStatus: (status) =>
             setStatus(
               status.status === "pending"
@@ -175,6 +213,7 @@ export function iniciarUiUpload({ onSucesso, intervaloMs, timeoutMs, timeoutFila
       onSucesso?.();
       setTimeout(fechar, delayFecharMs);
     } catch (error) {
+      esconderBarra();
       setStatus(error.message, "erro");
     } finally {
       botaoSubmit.disabled = false;

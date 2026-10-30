@@ -51,6 +51,14 @@
         <input type="text" id="uploadCategoria" maxlength="60">
       </label>
 
+      <!-- Barra de progresso do ENVIO do arquivo (POST /upload via XHR).
+           Visível só durante a fase de envio; some quando começa a
+           transcodificação (o texto de status assume a partir daí). -->
+      <div class="upload-progress hidden" id="uploadProgress" role="progressbar"
+           aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"
+           aria-label="Progresso do envio do vídeo">
+        <div class="upload-progress-fill" id="uploadProgressFill"></div>
+      </div>
       <div class="upload-status hidden" id="uploadStatus"></div>
       <button class="btn-primary" id="uploadSubmit" type="submit">Enviar</button>
     </form>

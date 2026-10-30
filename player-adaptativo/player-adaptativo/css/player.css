@@ -656,6 +656,25 @@ a.home-card .card-content {
 .upload-status.erro { color: #ff8f8f; }
 .upload-status.ok { color: #7dde92; }
 
+/* Barra de progresso do envio do arquivo (fase POST /upload — js/upload.js).
+   Ocupa o mesmo ritmo visual do modal; o fill cresce conforme os eventos
+   upload.onprogress do XHR chegam. */
+.upload-progress {
+  height: 8px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  overflow: hidden;
+}
+
+.upload-progress-fill {
+  height: 100%;
+  width: 0;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--accent), #7dde92);
+  transition: width .15s ease;
+}
+
 /* ---------------------------------------------------------------------------
    Cards sem stream (vídeo ainda não transcodificado / card de demonstração)
    --------------------------------------------------------------------------- */
