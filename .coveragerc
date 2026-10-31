@@ -1,0 +1,25 @@
+# Configuração do coverage.py (usado via pytest-cov).
+#
+# Comando padrão (raiz do repositório, venv ativado):
+#     pytest --cov=app --cov-report=term-missing --cov-report=html
+#
+# O CI roda a mesma coisa (--cov=app --cov-report=xml) — este arquivo vale
+# para os dois, mantendo o relatório consistente em qualquer máquina.
+[run]
+# Os próprios testes não devem entrar no relatório: sem este omit, todo
+# app/*/tests/* aparece medido (eles obviamente "cobrem" a si mesmos) e o
+# número final fica inflado e poluído.
+omit =
+    */tests/*
+    */conftest.py
+    conftest.py
+
+[report]
+# Linhas que não contam contra a cobertura (convenção padrão).
+exclude_lines =
+    pragma: no cover
+    if __name__ == .__main__.:
+    raise NotImplementedError
+
+[html]
+directory = htmlcov

@@ -268,6 +268,36 @@ resultado.get(timeout=10)
 
 Se tudo estiver certo, isso retorna `'pong'` e o terminal do worker (seja o log do `docker compose up` ou o terminal local) mostra a task sendo recebida e concluída (`received` → `succeeded`).
 
+## Cobertura de testes
+
+As duas suítes geram relatório de cobertura — é o mesmo que o CI roda em todo
+push (`.github/workflows/ci.yml`).
+
+**Backend (pytest + pytest-cov)** — na raiz do repositório, com o venv ativado:
+
+```bash
+pip install -r requirements.txt          # inclui pytest-cov (>= 6.0)
+pytest --cov=app --cov-report=term-missing --cov-report=html
+```
+
+O resumo por arquivo sai no terminal (com as linhas faltantes em `Missing`) e o
+relatório navegável em **`htmlcov/index.html`** (abra no navegador). A
+configuração mora no **`.coveragerc`** da raiz — ele omite os próprios testes
+do relatório (sem isso, `app/*/tests/*` inflaria o número).
+
+**Frontend (jest)** — na pasta do player:
+
+```bash
+cd player-adaptativo/player-adaptativo
+npm test -- --coverage
+```
+
+Tabela no terminal + relatório em **`coverage/lcov-report/index.html`**.
+
+> No VS Code: a extensão **Coverage Gutters** mostra as linhas cobertas/não
+> cobertas coloridas direto no editor (usa o `coverage.xml` do backend — gere
+> com `--cov-report=xml` — e o `coverage/lcov.info` do frontend).
+
 ## O vídeo não toca? Um comando diz onde está o problema
 
 ```bash
