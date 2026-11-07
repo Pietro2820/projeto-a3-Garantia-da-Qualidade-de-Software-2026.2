@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Enviar vídeo para a plataforma EduStream com barra de progresso em tempo real">
+  <title>EduStream — Enviar vídeo</title>
+  <link rel="stylesheet" href="./css/player.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="./home.html" aria-label="EduStream — início">Edu<span>Stream</span></a>
+    <a class="upload-voltar" href="./home.html">← Voltar ao catálogo</a>
+  </header>
+
+  <main class="page upload-page">
+    <h1>Enviar vídeo</h1>
+    <p class="upload-intro">
+      O arquivo passa por três etapas até aparecer no catálogo. Esta aba pode
+      ficar aberta: a barra acompanha o progresso real do envio (%, MB) e a
+      transcodificação até o vídeo ficar pronto.
+    </p>
+
+    <!-- Passos do pipeline — js/upload-page.js marca feito/ativo conforme anda -->
+    <ol class="upload-steps" id="uploadPassos">
+      <li data-fase="envio" class="ativo"><span>1</span> Envio</li>
+      <li data-fase="transcode"><span>2</span> Transcodificação</li>
+      <li data-fase="publicado"><span>3</span> Publicado</li>
+    </ol>
+
+    <form class="upload-card" id="uploadForm">
+      <!-- Zona de seleção: clique ou arraste. O input[type=file] fica
+           invisível cobrindo a área — o clique nativo abre o seletor. -->
+      <div class="upload-dropzone" id="uploadDropzone">
+        <strong>Escolha o arquivo</strong>
+        <span>ou arraste o vídeo aqui — mp4, avi, mov, webm (até 500 MB)</span>
+        <input type="file" id="uploadFile" accept=".mp4,.avi,.mov,.webm" required>
+      </div>
+
+      <!-- Prévia LOCAL do arquivo escolhido (blob: — antes de subir) -->
+      <div class="upload-preview hidden" id="uploadPreviewBox">
+        <video id="uploadPreview" controls preload="metadata"></video>
+        <span class="upload-arquivo-info" id="uploadArquivoInfo"></span>
+      </div>
+
+      <label>Título *
+        <input type="text" id="uploadTitulo" maxlength="120" required>
+      </label>
+      <label>Autor *
+        <input type="text" id="uploadAutor" maxlength="80" required>
+      </label>
+      <label>Descrição
+        <textarea id="uploadDescricao" rows="2"></textarea>
+      </label>
+      <label>Tags (separadas por vírgula)
+        <input type="text" id="uploadTags" placeholder="matemática, frações">
+      </label>
+      <label>Categoria
+        <input type="text" id="uploadCategoria" maxlength="60">
+      </label>
+
+      <!-- Barra GRANDE — mesma lógica de 3 fases do player (js/upload.js):
+            1. ENVIO: % real + MB do XHR, gradiente fluindo e brilho;
+            2. TRANSCODIFICAÇÃO: segmento deslizante (modo indeterminado);
+            3. PUBLICADO: 100% verde. A largura usa a fração EXATA do
+               upload, não o % arredondado do rótulo. -->
+      <div class="upload-progress grande hidden" id="uploadProgress" role="progressbar"
+           aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"
+           aria-label="Progresso do envio do vídeo">
+        <div class="upload-progress-topo">
+          <span class="upload-progress-rotulo" id="uploadProgressRotulo">Enviando arquivo...</span>
+          <span class="upload-progress-porcentagem" id="uploadProgressValor">0%</span>
+        </div>
+        <div class="upload-progress-trilho">
+          <div class="upload-progress-fill" id="uploadProgressFill"></div>
+        </div>
+      </div>
+      <div class="upload-status hidden" id="uploadStatus"></div>
+
+      <button class="btn-primary" id="uploadSubmit" type="submit">Enviar vídeo</button>
+    </form>
+
+    <!-- Painel de sucesso (fase 3): aparece com o link da watch page -->
+    <div class="upload-resultado hidden" id="uploadResultado" role="status">
+      <strong>✅ Vídeo publicado no catálogo!</strong>
+      <p>O vídeo já está disponível na home e pronto para assistir.</p>
+      <div class="upload-resultado-acoes">
+        <a class="btn-primary" id="uploadAssistir" href="./index.html" target="_blank" rel="noopener">▶ Assistir agora</a>
+        <button class="btn-secondary" id="uploadNovo" type="button">Enviar outro vídeo</button>
+      </div>
+    </div>
+  </main>
+
+  <!-- Configuração da API (origem do backend) — precisa vir antes do módulo. -->
+  <script src="./config.js"></script>
+  <script type="module">
+    import { iniciarPaginaUpload } from "./js/upload-page.js";
+    iniciarPaginaUpload();
+  </script>
+</body>
+</html>

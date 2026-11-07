@@ -1,13 +1,15 @@
 /**
- * Testes do upload pela interface (home → modal → POST /upload).
+ * Testes do upload pela interface — página dedicada upload.html, aberta em
+ * NOVA ABA pelo botão "Enviar vídeo" da home.
  *
- * Cobre o js/upload.js com o modal REAL da home.html (carregado no jsdom):
- * abrir/fechar, validação sem arquivo, caminho feliz (multipart + polling de
- * /status até completed + refresh do catálogo), BARRA DE PROGRESSO do envio
- * e erros da API mostrando o detail legível dentro do modal.
+ * Cobre o js/upload-page.js com a página REAL (carregada no jsdom): escolha
+ * de arquivo com prévia local, caminho feliz (multipart + polling de /status
+ * até completed + painel "Assistir agora"), as 3 FASES da barra (ENVIO com
+ * % exato do XHR, TRANSCODIFICAÇÃO indeterminada, PUBLICADO verde) e os
+ * erros da API mostrando o detail legível na página.
  *
- * O POST /upload usa XMLHttpRequest (para ter eventos de progresso de envio —
- * fetch não expõe isso), então os testes instalam uma dublê (FakeXHR) em
+ * O POST /upload usa XMLHttpRequest (para ter eventos de progresso de envio
+ * — fetch não expõe isso), então os testes instalam uma dublê (FakeXHR) em
  * global.XMLHttpRequest. /status e /catalogo seguem dublados via global.fetch.
  */
 import { jest } from "@jest/globals";
@@ -16,8 +18,8 @@ import { fileURLToPath } from "node:url";
 
 import { uploadVideo } from "../js/api.js";
 
-const homeHtml = readFileSync(
-  fileURLToPath(new URL("../home.html", import.meta.url)),
+const paginaHtml = readFileSync(
+  fileURLToPath(new URL("../upload.html", import.meta.url)),
   "utf8"
 );
 
@@ -31,7 +33,7 @@ let chamadasStatus = 0;
  * `FakeXHR.auto` define a resposta automática disparada no send() (num
  * setTimeout 0, como a rede real): { status, corpo, progresso: [frações] }.
  * Com `auto = null` o teste pilota manualmente via emitirProgresso/concluir —
- * é assim que o teste da barra congela o envio no meio para inspecionar o DOM.
+ * é assim que a suíte congela o envio no meio para inspecionar a barra.
  */
 class FakeXHR {
   static instancias = [];
@@ -130,9 +132,10 @@ function mockarRotas() {
   return global.fetch;
 }
 
-function subirHomeComModal() {
+/** Carrega a página de upload real no jsdom (sem executar os <script>). */
+function subirPagina() {
   jest.resetModules();
-  const pagina = new DOMParser().parseFromString(homeHtml, "text/html");
+  const pagina = new DOMParser().parseFromString(paginaHtml, "text/html");
   document.body.innerHTML = pagina.body.innerHTML;
 }
 
@@ -142,23 +145,37 @@ async function flush(vezes = 8) {
   }
 }
 
+/** Instala o arquivo no input (jsdom não abre seletor de arquivos). */
+function escolherArquivo(nome = "aula.mp4", bytes = [1, 2, 3]) {
+  const arquivo = new File([new Uint8Array(bytes)], nome, { type: "video/mp4" });
+  const input = document.querySelector("#uploadFile");
+  Object.defineProperty(input, "files", { value: [arquivo] });
+  input.dispatchEvent(new Event("change"));
+  return arquivo;
+}
+
 function preencherFormulario() {
-  const arquivo = new File([new Uint8Array([1, 2, 3])], "aula.mp4", { type: "video/mp4" });
-  Object.defineProperty(document.querySelector("#uploadFile"), "files", {
-    value: [arquivo],
-  });
+  escolherArquivo();
   document.querySelector("#uploadTitulo").value = "Aula nova";
   document.querySelector("#uploadAutor").value = "Rafael";
   document.querySelector("#uploadTags").value = "matemática";
 }
 
-async function subirUiUpload(opcoes = {}) {
-  const { iniciarUiUpload } = await import("../js/upload.js");
-  return iniciarUiUpload({ intervaloMs: 0, delayFecharMs: 0, ...opcoes });
+async function iniciarPagina(opcoes = {}) {
+  const { iniciarPaginaUpload } = await import("../js/upload-page.js");
+  return iniciarPaginaUpload({ intervaloMs: 0, ...opcoes });
+}
+
+function submeter() {
+  document.querySelector("#uploadForm")
+    .dispatchEvent(new Event("submit", { cancelable: true }));
 }
 
 beforeAll(() => {
   global.XMLHttpRequest = FakeXHR;
+  // jsdom não implementa blob: — a prévia local precisa destes stubs.
+  global.URL.createObjectURL = jest.fn(() => "blob:previa");
+  global.URL.revokeObjectURL = jest.fn();
 });
 
 afterAll(() => {
@@ -167,7 +184,7 @@ afterAll(() => {
 
 beforeEach(() => {
   FakeXHR.reset();
-  // Resposta padrão: upload aceito e enfileirado (o cenário do caminho feliz).
+  // Resposta padrão: upload aceito e enfileirado (cenário do caminho feliz).
   FakeXHR.auto = {
     status: 200,
     corpo: { video_id: "v-novo", status: "pending", fila: "enfileirado" },
@@ -181,29 +198,13 @@ afterEach(() => {
   document.body.innerHTML = "";
 });
 
-describe("upload.js — modal", () => {
-  test("o botão da home abre e o × fecha", async () => {
-    mockarRotas();
-    subirHomeComModal();
-    await subirUiUpload();
-
-    const modal = document.querySelector("#uploadModal");
-    expect(modal.classList.contains("hidden")).toBe(true);
-
-    document.querySelector("#uploadOpenButton").click();
-    expect(modal.classList.contains("hidden")).toBe(false);
-
-    document.querySelector("#uploadClose").click();
-    expect(modal.classList.contains("hidden")).toBe(true);
-  });
-
+describe("upload.html — escolha do arquivo", () => {
   test("submit sem arquivo avisa e não chama a API", async () => {
     const fetchMock = mockarRotas();
-    subirHomeComModal();
-    await subirUiUpload();
+    subirPagina();
+    await iniciarPagina();
 
-    document.querySelector("#uploadForm")
-      .dispatchEvent(new Event("submit", { cancelable: true }));
+    submeter();
     await flush(2);
 
     expect(document.querySelector("#uploadStatus").textContent)
@@ -212,18 +213,43 @@ describe("upload.js — modal", () => {
     expect(fetchMock.mock.calls.some(([url]) => String(url).endsWith("/upload")))
       .toBe(false);
   });
+
+  test("escolher arquivo mostra a prévia local com nome e tamanho", async () => {
+    mockarRotas();
+    subirPagina();
+    await iniciarPagina();
+
+    const arquivo = escolherArquivo();
+
+    expect(global.URL.createObjectURL).toHaveBeenCalledWith(arquivo);
+    expect(document.querySelector("#uploadPreviewBox").classList.contains("hidden")).toBe(false);
+    expect(document.querySelector("#uploadPreview").getAttribute("src")).toBe("blob:previa");
+    expect(document.querySelector("#uploadArquivoInfo").textContent)
+      .toContain("aula.mp4 — 3 B");
+    expect(document.querySelector("#uploadStatus").textContent).toContain("Arquivo escolhido");
+  });
+
+  test("extensão inválida é barrada antes de subir (prévia não aparece)", async () => {
+    mockarRotas();
+    subirPagina();
+    await iniciarPagina();
+
+    escolherArquivo("trabalho.pdf");
+
+    expect(document.querySelector("#uploadStatus").textContent)
+      .toContain("Formato inválido");
+    expect(document.querySelector("#uploadPreviewBox").classList.contains("hidden")).toBe(true);
+  });
 });
 
-describe("upload.js — caminho feliz", () => {
-  test("envia multipart, acompanha o status e avisa sucesso", async () => {
+describe("upload.html — caminho feliz", () => {
+  test("envia multipart, acompanha o status e mostra o painel com Assistir agora", async () => {
     mockarRotas();
-    subirHomeComModal();
-    const onSucesso = jest.fn();
-    await subirUiUpload({ onSucesso });
+    subirPagina();
+    await iniciarPagina();
 
     preencherFormulario();
-    document.querySelector("#uploadForm")
-      .dispatchEvent(new Event("submit", { cancelable: true }));
+    submeter();
     await flush(12);
 
     const xhr = FakeXHR.ultima;
@@ -238,132 +264,74 @@ describe("upload.js — caminho feliz", () => {
     expect(xhr.headers["Content-Type"]).toBeUndefined();
 
     expect(chamadasStatus).toBeGreaterThanOrEqual(2);
+
+    // Painel de sucesso com o link da watch page do vídeo publicado.
+    const resultado = document.querySelector("#uploadResultado");
+    expect(resultado.classList.contains("hidden")).toBe(false);
+    expect(document.querySelector("#uploadAssistir").getAttribute("href"))
+      .toBe("index.html?video=v-novo");
     expect(document.querySelector("#uploadStatus").textContent)
       .toContain("pronto e publicado");
-    expect(onSucesso).toHaveBeenCalled();
+
+    // Botão volta a habilitar e o formulário é limpo para o próximo envio.
+    expect(document.querySelector("#uploadSubmit").disabled).toBe(false);
+    expect(document.querySelector("#uploadTitulo").value).toBe("");
   });
 
-  test("a home recarrega o catálogo depois de publicar (fiação do onSucesso)", async () => {
-    const fetchMock = mockarRotas();
-    subirHomeComModal();
-    // Quem liga o onSucesso ao reload da grade é a home (home.js), não o
-    // upload.js isolado — por isso o teste sobe a página inteira.
-    await import("../js/home.js");
-    await flush(4);
-
-    const antes = fetchMock.mock.calls.filter(([url]) =>
-      String(url).includes("/catalogo")).length;
-
-    preencherFormulario();
-    document.querySelector("#uploadForm")
-      .dispatchEvent(new Event("submit", { cancelable: true }));
-
-    // O polling de produção é de 2s: espera um pouco além dele.
-    await new Promise((resolver) => setTimeout(resolver, 2600));
-
-    const depois = fetchMock.mock.calls.filter(([url]) =>
-      String(url).includes("/catalogo")).length;
-    expect(depois).toBeGreaterThan(antes);
-  }, 10000);
-
-  test("o modal fecha sozinho após o sucesso", async () => {
+  test("as etapas 1→2→3 marcam feito/ativo conforme o pipeline anda", async () => {
     mockarRotas();
-    subirHomeComModal();
-    await subirUiUpload();
+    subirPagina();
+    await iniciarPagina();
 
     preencherFormulario();
-    document.querySelector("#uploadForm")
-      .dispatchEvent(new Event("submit", { cancelable: true }));
+    submeter();
     await flush(12);
 
-    expect(document.querySelector("#uploadModal").classList.contains("hidden")).toBe(true);
+    const passos = document.querySelectorAll("#uploadPassos li");
+    expect(passos[0].classList.contains("feito")).toBe(true);
+    expect(passos[1].classList.contains("feito")).toBe(true);
+    expect(passos[2].classList.contains("ativo")).toBe(true);
   });
 });
 
-describe("upload.js — barra de progresso do envio", () => {
-  test("a barra avança com os eventos do XHR e some ao concluir", async () => {
+describe("upload.html — barra de progresso (3 fases até o carregamento final)", () => {
+  test("fase 1 ENVIO: barra visível desde 0% e avança com o valor EXATO do XHR", async () => {
     mockarRotas();
     FakeXHR.auto = null; // envio pilotado manualmente
-    subirHomeComModal();
-    await subirUiUpload();
+    subirPagina();
+    await iniciarPagina();
 
     preencherFormulario();
-    document.querySelector("#uploadForm")
-      .dispatchEvent(new Event("submit", { cancelable: true }));
+    submeter();
     await flush(2);
-
-    const xhr = FakeXHR.ultima;
-    expect(xhr).not.toBeNull();
 
     const barra = document.querySelector("#uploadProgress");
     const fill = document.querySelector("#uploadProgressFill");
+    const valor = document.querySelector("#uploadProgressValor");
     const status = document.querySelector("#uploadStatus");
 
-    // Antes do primeiro evento: barra continua escondida.
-    expect(barra.classList.contains("hidden")).toBe(true);
-
-    xhr.emitirProgresso(0.4);
-    await flush(1);
+    // Diferente do modal antigo, a barra da página JÁ NASCE visível em 0%:
+    // a aba existe para mostrar a evolução exata do começo ao fim.
     expect(barra.classList.contains("hidden")).toBe(false);
-    expect(barra.getAttribute("aria-valuenow")).toBe("40");
-    expect(fill.style.width).toBe("40%");
-    expect(status.textContent).toContain("40%");
-    expect(status.textContent).toContain("410 KB de 1.0 MB");
-
-    xhr.emitirProgresso(1);
-    xhr.concluir(200, { video_id: "v-novo", status: "pending", fila: "enfileirado" });
-    await flush(12);
-
-    // Concluiu o processamento: barra zerada/escondida e mensagem final.
-    expect(status.textContent).toContain("pronto e publicado");
-    expect(barra.classList.contains("hidden")).toBe(true);
+    expect(barra.getAttribute("aria-valuenow")).toBe("0");
     expect(fill.style.width).toBe("0%");
-  });
-
-  test("a barra também some quando o envio termina em erro", async () => {
-    FakeXHR.auto = null;
-    global.fetch = jest.fn(async () => ({ ok: true, status: 200, json: async () => ({}) }));
-    subirHomeComModal();
-    await subirUiUpload();
-
-    preencherFormulario();
-    document.querySelector("#uploadForm")
-      .dispatchEvent(new Event("submit", { cancelable: true }));
-    await flush(2);
-
-    const xhr = FakeXHR.ultima;
-    xhr.emitirProgresso(0.7);
-    await flush(1);
-    expect(document.querySelector("#uploadProgress").classList.contains("hidden")).toBe(false);
-
-    xhr.concluirTexto(413, JSON.stringify({ detail: "Arquivo excede o tamanho máximo de 500MB." }));
-    await flush(4);
-
-    const barra = document.querySelector("#uploadProgress");
-    expect(barra.classList.contains("hidden")).toBe(true);
-    expect(document.querySelector("#uploadStatus").textContent)
-      .toContain("tamanho máximo de 500MB");
-  });
-});
-
-describe("upload.js — barra animada (3 fases até o carregamento final)", () => {
-  test("fase 1 ENVIO: rótulo e % acompanham o preenchimento da barra", async () => {
-    mockarRotas();
-    FakeXHR.auto = null;
-    subirHomeComModal();
-    await subirUiUpload();
-
-    preencherFormulario();
-    document.querySelector("#uploadForm")
-      .dispatchEvent(new Event("submit", { cancelable: true }));
-    await flush(2);
+    expect(valor.textContent).toBe("0%");
+    expect(status.textContent).toContain("0% (0 B de 3 B)");
 
     FakeXHR.ultima.emitirProgresso(0.4);
     await flush(1);
+    expect(barra.getAttribute("aria-valuenow")).toBe("40");
+    expect(fill.style.width).toBe("40%");
+    expect(valor.textContent).toBe("40%");
+    expect(status.textContent).toContain("410 KB de 1.0 MB");
 
-    expect(document.querySelector("#uploadProgressValor").textContent).toBe("40%");
-    expect(document.querySelector("#uploadProgressRotulo").textContent)
-      .toContain("Enviando");
+    // Fração que não fecha inteira: rótulo com 1 casa decimal, largura
+    // proporcional ao valor real (não arredondado para 87%).
+    FakeXHR.ultima.emitirProgresso(0.873);
+    await flush(1);
+    expect(valor.textContent).toBe("87.3%");
+    expect(fill.style.width).toBe("87.3%");
+    expect(barra.getAttribute("aria-valuenow")).toBe("87");
   });
 
   test("fase 2 TRANSCODIFICAÇÃO: barra anima em modo indeterminado em vez de sumir", async () => {
@@ -380,12 +348,11 @@ describe("upload.js — barra animada (3 fases até o carregamento final)", () =
       return { ok: true, status: 200, json: async () => ({ videos: [], total: 0 }) };
     });
     FakeXHR.auto = null;
-    subirHomeComModal();
-    await subirUiUpload();
+    subirPagina();
+    await iniciarPagina();
 
     preencherFormulario();
-    document.querySelector("#uploadForm")
-      .dispatchEvent(new Event("submit", { cancelable: true }));
+    submeter();
     await flush(2);
 
     const barra = document.querySelector("#uploadProgress");
@@ -403,17 +370,20 @@ describe("upload.js — barra animada (3 fases até o carregamento final)", () =
     expect(valor.textContent).toBe("—");
     expect(document.querySelector("#uploadProgressRotulo").textContent)
       .toContain("Transcodificando");
+
+    // Etapa 2 em andamento na régua de passos.
+    const passos = document.querySelectorAll("#uploadPassos li");
+    expect(passos[0].classList.contains("feito")).toBe(true);
+    expect(passos[1].classList.contains("ativo")).toBe(true);
   });
 
-  test("fase 3 PUBLICADO: 100% verde antes do modal fechar", async () => {
+  test("fase 3 PUBLICADO: 100% verde com a página ainda aberta", async () => {
     mockarRotas();
-    subirHomeComModal();
-    // delayFecharMs alto: o modal continua aberto para inspecionar a barra.
-    await subirUiUpload({ delayFecharMs: 5000 });
+    subirPagina();
+    await iniciarPagina();
 
     preencherFormulario();
-    document.querySelector("#uploadForm")
-      .dispatchEvent(new Event("submit", { cancelable: true }));
+    submeter();
     await flush(12);
 
     const barra = document.querySelector("#uploadProgress");
@@ -431,12 +401,11 @@ describe("upload.js — barra animada (3 fases até o carregamento final)", () =
   test("erro no meio do envio: volta ao estado limpo (sem animação residual)", async () => {
     FakeXHR.auto = null;
     global.fetch = jest.fn(async () => ({ ok: true, status: 200, json: async () => ({}) }));
-    subirHomeComModal();
-    await subirUiUpload();
+    subirPagina();
+    await iniciarPagina();
 
     preencherFormulario();
-    document.querySelector("#uploadForm")
-      .dispatchEvent(new Event("submit", { cancelable: true }));
+    submeter();
     await flush(2);
 
     const barra = document.querySelector("#uploadProgress");
@@ -450,29 +419,56 @@ describe("upload.js — barra animada (3 fases até o carregamento final)", () =
     expect(barra.classList.contains("hidden")).toBe(true);
     expect(barra.classList.contains("indeterminada")).toBe(false);
     expect(barra.classList.contains("concluida")).toBe(false);
+    expect(document.querySelector("#uploadResultado").classList.contains("hidden")).toBe(true);
   });
 });
 
-describe("upload.js — erros", () => {
-  test("detail da API aparece legível no modal (sem stacktrace)", async () => {
+describe("upload.html — \"Enviar outro vídeo\"", () => {
+  test("limpa formulário, barra, prévia e painel sem recarregar a página", async () => {
+    mockarRotas();
+    subirPagina();
+    await iniciarPagina();
+
+    preencherFormulario();
+    submeter();
+    await flush(12);
+    expect(document.querySelector("#uploadResultado").classList.contains("hidden")).toBe(false);
+
+    document.querySelector("#uploadNovo").click();
+
+    const barra = document.querySelector("#uploadProgress");
+    expect(barra.classList.contains("hidden")).toBe(true);
+    expect(document.querySelector("#uploadProgressFill").style.width).toBe("0%");
+    expect(document.querySelector("#uploadProgressValor").textContent).toBe("0%");
+    expect(document.querySelector("#uploadResultado").classList.contains("hidden")).toBe(true);
+    expect(document.querySelector("#uploadPreviewBox").classList.contains("hidden")).toBe(true);
+    expect(document.querySelector("#uploadTitulo").value).toBe("");
+
+    // A régua de passos volta para a etapa 1.
+    const passos = document.querySelectorAll("#uploadPassos li");
+    expect(passos[0].classList.contains("ativo")).toBe(true);
+    expect(passos[2].classList.contains("feito")).toBe(false);
+  });
+});
+
+describe("upload.html — erros", () => {
+  test("detail da API aparece legível na página (sem stacktrace)", async () => {
     mockarRotas();
     FakeXHR.auto = {
       status: 400,
       corpo: { detail: "Formato inválido. Use mp4, avi, mov ou webm." },
     };
-    subirHomeComModal();
-    const onSucesso = jest.fn();
-    await subirUiUpload({ onSucesso });
+    subirPagina();
+    await iniciarPagina();
 
     preencherFormulario();
-    document.querySelector("#uploadForm")
-      .dispatchEvent(new Event("submit", { cancelable: true }));
+    submeter();
     await flush(4);
 
     const status = document.querySelector("#uploadStatus");
     expect(status.textContent).toContain("Formato inválido");
     expect(status.classList.contains("erro")).toBe(true);
-    expect(onSucesso).not.toHaveBeenCalled();
+    expect(document.querySelector("#uploadResultado").classList.contains("hidden")).toBe(true);
   });
 
   test("transcodificação failed vira mensagem de erro", async () => {
@@ -486,12 +482,11 @@ describe("upload.js — erros", () => {
       }
       return { ok: true, status: 200, json: async () => ({ videos: [], total: 0 }) };
     });
-    subirHomeComModal();
-    await subirUiUpload();
+    subirPagina();
+    await iniciarPagina();
 
     preencherFormulario();
-    document.querySelector("#uploadForm")
-      .dispatchEvent(new Event("submit", { cancelable: true }));
+    submeter();
     await flush(4);
 
     expect(document.querySelector("#uploadStatus").textContent).toContain("FFmpeg ausente");
@@ -503,18 +498,17 @@ describe("upload.js — erros", () => {
       status: 200,
       corpo: { video_id: "v-novo", status: "pending", fila: "indisponivel" },
     };
-    subirHomeComModal();
-    await subirUiUpload();
+    subirPagina();
+    await iniciarPagina();
 
     preencherFormulario();
-    document.querySelector("#uploadForm")
-      .dispatchEvent(new Event("submit", { cancelable: true }));
+    submeter();
     await flush(4);
 
     const status = document.querySelector("#uploadStatus");
     expect(status.textContent).toContain("fila de processamento está fora do ar");
     expect(status.classList.contains("erro")).toBe(true);
-    // O bug original: mesmo sem fila, o modal ficava pollando /status por 10 min.
+    // O bug original do modal: mesmo sem fila, ficava pollando /status por 10 min.
     expect(fetchMock.mock.calls.some(([url]) => String(url).includes("/status/")))
       .toBe(false);
   });
@@ -530,12 +524,11 @@ describe("upload.js — erros", () => {
       }
       return { ok: true, status: 200, json: async () => ({ videos: [], total: 0 }) };
     });
-    subirHomeComModal();
-    await subirUiUpload({ timeoutFilaMs: 40, intervaloMs: 5 });
+    subirPagina();
+    await iniciarPagina({ timeoutFilaMs: 40, intervaloMs: 5 });
 
     preencherFormulario();
-    document.querySelector("#uploadForm")
-      .dispatchEvent(new Event("submit", { cancelable: true }));
+    submeter();
     await new Promise((resolver) => setTimeout(resolver, 400));
 
     const status = document.querySelector("#uploadStatus");

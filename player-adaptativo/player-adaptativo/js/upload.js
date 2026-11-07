@@ -1,17 +1,21 @@
 /**
- * Upload pela interface (modal da home) — js/upload.js.
+ * Lógica compartilhada do upload pela interface — js/upload.js.
  *
- * Antes, publicar um vídeo exigia Swagger ou o scripts/demo_completo.py —
- * ruim para a apresentação. Agora a home tem o botão "Enviar vídeo":
+ * A home tem o botão "Enviar vídeo", que abre a página dedicada
+ * upload.html em NOVA ABA (controlada por js/upload-page.js). Lá:
  *
- *   1. o formulário monta um FormData e chama POST /upload (multipart);
+ *   1. o formulário monta um FormData e chama POST /upload (multipart) via
+ *      XHR — os eventos de progresso alimentam a fase ENVIO da barra;
  *   2. com o video_id da resposta, acompanha GET /status/{id} em polling
- *      (pending → processing → completed), mostrando o progresso no modal;
- *   3. quando completa, avisa `onSucesso` (a home recarrega o catálogo e o
- *     card do vídeo novo aparece na grade).
+ *      (pending → processing → completed) — fase TRANSCODIFICAÇÃO;
+ *   3. completed → fase PUBLICADO (100% verde) + painel "Assistir agora".
+ *
+ * Este módulo guarda as peças reutilizadas pela página: o polling
+ * (aguardarProcessamento), o envio com acompanhamento (enviarEAcompanhar),
+ * a formatação de bytes e a fábrica da barra de 3 fases (criarBarraFases).
  *
  * Erros (extensão inválida, título vazio, banco fora) chegam como mensagem
- * legível dentro do modal — o detail JSON da API, não um stacktrace.
+ * legível na página — o detail JSON da API, não um stacktrace.
  */
 import { getVideoStatus, uploadVideo } from "./api.js";
 
@@ -116,154 +120,73 @@ export async function enviarEAcompanhar(formData, callbacks = {}, opcoes = {}) {
 }
 
 /**
- * Liga o modal de upload da home (se existir na página).
- * Devolve { abrir, fechar } ou null quando a página não tem o modal
- * (a watch page index.html não tem — e está tudo bem).
+ * Fábrica da barra de progresso de 3 fases (usada pela página de upload).
+ *
+ *   1. ENVIO      — preenchida pelo % real do XHR, com gradiente fluindo e
+ *                   brilho percorrendo o preenchimento;
+ *   2. TRANSCODE  — modo "indeterminada": segmento deslizante no trilho
+ *                   (o FFmpeg não informa %);
+ *   3. PUBLICADO  — estado "concluida": 100%, verde, sem animação.
+ *
+ * Recebe os elementos do DOM da barra e um `setStatus(texto, classe)` para
+ * o texto de apoio, e devolve as funções de cada fase. A largura usa o
+ * valor EXATO da fração vinda do XHR (2 casas decimais) — não o % inteiro
+ * do rótulo — para a barra acompanhar a evolução real byte a byte do
+ * upload; o rótulo mostra 1 casa decimal abaixo de 100%.
  */
-export function iniciarUiUpload({ onSucesso, intervaloMs, timeoutMs, timeoutFilaMs, delayFecharMs = 1200 } = {}) {
-  const modal = document.querySelector("#uploadModal");
-  const form = document.querySelector("#uploadForm");
-  if (!modal || !form) return null;
-
-  const botaoAbrir = document.querySelector("#uploadOpenButton");
-  const botaoFechar = document.querySelector("#uploadClose");
-  const statusEl = document.querySelector("#uploadStatus");
-  const botaoSubmit = document.querySelector("#uploadSubmit");
-  const barraEl = document.querySelector("#uploadProgress");
-  const barraFill = document.querySelector("#uploadProgressFill");
-  const barraRotulo = document.querySelector("#uploadProgressRotulo");
-  const barraValor = document.querySelector("#uploadProgressValor");
-
-  const abrir = () => modal.classList.remove("hidden");
-  const fechar = () => {
-    modal.classList.add("hidden");
-    esconderBarra();
-  };
-
-  botaoAbrir?.addEventListener("click", abrir);
-  botaoFechar?.addEventListener("click", fechar);
-  modal.addEventListener("click", (event) => {
-    if (event.target === modal) fechar();
-  });
-
-  function setStatus(texto, classe = "") {
-    statusEl.textContent = texto;
-    statusEl.className = `upload-status ${classe}`.trim();
-  }
-
-  function rotulo(texto) {
-    if (barraRotulo) barraRotulo.textContent = texto;
+export function criarBarraFases({ barra, fill, rotulo, valor, setStatus } = {}) {
+  function textoPorcentagem(fracao) {
+    const pct = Math.round(fracao * 1000) / 10; // 1 casa decimal
+    return Number.isInteger(pct) ? `${pct}%` : `${pct.toFixed(1)}%`;
   }
 
   /** Fase 1 — ENVIO: barra preenchida pelo % real do XHR, com animação. */
   function atualizarBarra({ fracao = 0, enviado = 0, total = 0 } = {}) {
-    const pct = Math.max(0, Math.min(100, Math.round(fracao * 100)));
-    if (barraEl) {
-      barraEl.classList.remove("hidden", "indeterminada", "concluida");
-      barraEl.setAttribute("aria-valuenow", String(pct));
+    const fracaoLimitada = Math.max(0, Math.min(1, fracao));
+    if (barra) {
+      barra.classList.remove("hidden", "indeterminada", "concluida");
+      barra.setAttribute("aria-valuenow", String(Math.round(fracaoLimitada * 100)));
     }
-    if (barraFill) barraFill.style.width = `${pct}%`;
-    if (barraValor) barraValor.textContent = `${pct}%`;
-    setStatus(
+    if (fill) fill.style.width = `${Math.round(fracaoLimitada * 10000) / 100}%`;
+    if (valor) valor.textContent = textoPorcentagem(fracaoLimitada);
+    setStatus?.(
       total > 0
-        ? `Enviando arquivo... ${pct}% (${formatarBytes(enviado)} de ${formatarBytes(total)})`
-        : `Enviando arquivo... ${pct}% (${formatarBytes(enviado)} enviados)`
+        ? `Enviando arquivo... ${textoPorcentagem(fracaoLimitada)} (${formatarBytes(enviado)} de ${formatarBytes(total)})`
+        : `Enviando arquivo... ${textoPorcentagem(fracaoLimitada)} (${formatarBytes(enviado)} enviados)`
     );
   }
 
   /** Fase 2 — TRANSCODIFICAÇÃO: o FFmpeg não informa %, então a barra entra
    *  no modo indeterminado (segmento deslizante) até o status mudar. */
   function modoIndeterminado(textoRotulo) {
-    if (!barraEl) return;
-    barraEl.classList.remove("hidden", "concluida");
-    barraEl.classList.add("indeterminada");
-    barraEl.removeAttribute("aria-valuenow");
-    if (barraValor) barraValor.textContent = "—";
-    rotulo(textoRotulo);
+    if (!barra) return;
+    barra.classList.remove("hidden", "concluida");
+    barra.classList.add("indeterminada");
+    barra.removeAttribute("aria-valuenow");
+    if (valor) valor.textContent = "—";
+    if (rotulo) rotulo.textContent = textoRotulo;
   }
 
-  /** Fase 3 — PUBLICADO: 100% verde até o modal fechar. */
-  function marcarConcluida() {
-    if (!barraEl) return;
-    barraEl.classList.remove("indeterminada");
-    barraEl.classList.add("concluida");
-    barraEl.setAttribute("aria-valuenow", "100");
-    if (barraFill) barraFill.style.width = "100%";
-    if (barraValor) barraValor.textContent = "100%";
-    rotulo("Publicado no catálogo!");
+  /** Fase 3 — PUBLICADO: 100% verde. */
+  function marcarConcluida(textoRotulo = "Publicado no catálogo!") {
+    if (!barra) return;
+    barra.classList.remove("indeterminada");
+    barra.classList.add("concluida");
+    barra.setAttribute("aria-valuenow", "100");
+    if (fill) fill.style.width = "100%";
+    if (valor) valor.textContent = "100%";
+    if (rotulo) rotulo.textContent = textoRotulo;
   }
 
+  /** Volta ao estado inicial (erro no envio ou reset do formulário). */
   function esconderBarra() {
-    barraEl?.classList.add("hidden");
-    barraEl?.classList.remove("indeterminada", "concluida");
-    barraEl?.setAttribute("aria-valuenow", "0");
-    if (barraFill) barraFill.style.width = "0%";
-    if (barraValor) barraValor.textContent = "0%";
+    barra?.classList.add("hidden");
+    barra?.classList.remove("indeterminada", "concluida");
+    barra?.setAttribute("aria-valuenow", "0");
+    if (fill) fill.style.width = "0%";
+    if (valor) valor.textContent = "0%";
+    if (rotulo) rotulo.textContent = "Enviando arquivo...";
   }
 
-  form.addEventListener("submit", async (event) => {
-    event.preventDefault();
-
-    const arquivo = document.querySelector("#uploadFile").files?.[0];
-    if (!arquivo) {
-      setStatus("Escolha um arquivo de vídeo (.mp4, .avi, .mov ou .webm).", "erro");
-      return;
-    }
-
-    const dados = new FormData();
-    dados.append("file", arquivo);
-    dados.append("titulo", document.querySelector("#uploadTitulo").value.trim());
-    dados.append("autor", document.querySelector("#uploadAutor").value.trim());
-    dados.append("descricao", document.querySelector("#uploadDescricao").value.trim());
-    dados.append("tags", document.querySelector("#uploadTags").value.trim());
-    dados.append("categoria", document.querySelector("#uploadCategoria").value.trim());
-
-    botaoSubmit.disabled = true;
-    esconderBarra();
-    try {
-      await enviarEAcompanhar(
-        dados,
-        {
-          onEnviando: () => setStatus("Enviando arquivo para a API..."),
-          onProgress: atualizarBarra,
-          onProcessando: () => {
-            // Fase 2: a barra NÃO some — entra no modo indeterminado e anima
-            // enquanto a transcodificação roda (o professor pediu a barra
-            // preenchida até o carregamento FINAL do vídeo).
-            modoIndeterminado("Transcodificando em HLS...");
-            setStatus(
-              "Upload concluído! Transcodificando em HLS — de segundos a alguns minutos..."
-            );
-          },
-          onStatus: (status) => {
-            setStatus(
-              status.status === "pending"
-                ? "Na fila, aguardando um worker iniciar o processamento..."
-                : `Processando... status: ${status.status}`
-            );
-            rotulo(
-              status.status === "pending"
-                ? "Na fila, aguardando um worker..."
-                : "Transcodificando em HLS..."
-            );
-          },
-        },
-        { intervaloMs, timeoutMs, timeoutFilaMs }
-      );
-
-      // Fase 3: 100% verde por um instante — o modal fecha em seguida.
-      marcarConcluida();
-      setStatus("Vídeo pronto e publicado no catálogo!", "ok");
-      form.reset();
-      onSucesso?.();
-      setTimeout(fechar, delayFecharMs);
-    } catch (error) {
-      esconderBarra();
-      setStatus(error.message, "erro");
-    } finally {
-      botaoSubmit.disabled = false;
-    }
-  });
-
-  return { abrir, fechar };
+  return { atualizarBarra, modoIndeterminado, marcarConcluida, esconderBarra };
 }

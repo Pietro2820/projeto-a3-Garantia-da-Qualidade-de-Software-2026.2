@@ -18,61 +18,14 @@
 
     <button class="icon-button" id="profileButton" type="button" aria-label="Perfil">👤</button>
 
-    <!-- Upload pela interface: antes, publicar um vídeo exigia Swagger ou o
-         scripts/demo_completo.py — ruim para a apresentação. Abre o modal. -->
-    <button class="btn-primary topbar-upload" id="uploadOpenButton" type="button"
-            title="Enviar vídeo para a plataforma">Enviar vídeo</button>
+    <!-- Upload pela interface: abre a página dedicada em NOVA ABA — lá a
+         barra grande acompanha o envio byte a byte e a transcodificação
+         (upload.html + js/upload-page.js). Quando a aba da home volta ao
+         foco, a grade recarrega sozinha com o vídeo novo. -->
+    <a class="btn-primary topbar-upload" id="uploadOpenButton" href="./upload.html"
+       target="_blank" rel="noopener"
+       title="Enviar vídeo para a plataforma (abre em nova aba)">Enviar vídeo</a>
   </header>
-
-  <!-- Modal de upload (multipart -> POST /upload, polling de /status) -->
-  <div class="modal hidden" id="uploadModal" role="dialog" aria-modal="true" aria-labelledby="uploadModalTitle">
-    <form class="modal-card" id="uploadForm">
-      <div class="modal-header">
-        <strong id="uploadModalTitle">Enviar vídeo</strong>
-        <button class="icon-button" id="uploadClose" type="button" aria-label="Fechar">×</button>
-      </div>
-
-      <label>Arquivo (mp4, avi, mov, webm)
-        <input type="file" id="uploadFile" accept=".mp4,.avi,.mov,.webm" required>
-      </label>
-      <label>Título *
-        <input type="text" id="uploadTitulo" maxlength="120" required>
-      </label>
-      <label>Autor *
-        <input type="text" id="uploadAutor" maxlength="80" required>
-      </label>
-      <label>Descrição
-        <textarea id="uploadDescricao" rows="2"></textarea>
-      </label>
-      <label>Tags (separadas por vírgula)
-        <input type="text" id="uploadTags" placeholder="matemática, frações">
-      </label>
-      <label>Categoria
-        <input type="text" id="uploadCategoria" maxlength="60">
-      </label>
-
-      <!-- Barra de progresso animada — acompanha o vídeo ATÉ O CARREGAMENTO
-           FINAL, passando por todas as fases (js/upload.js):
-             1. ENVIO (POST /upload via XHR): preenchida pelo % real do
-                arquivo, com gradiente em movimento e brilho;
-             2. TRANSCODIFICAÇÃO (polling de /status): segmento deslizante
-                (modo indeterminado — o FFmpeg não informa %);
-             3. PUBLICADO: 100% verde antes do modal fechar. -->
-      <div class="upload-progress hidden" id="uploadProgress" role="progressbar"
-           aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"
-           aria-label="Progresso do envio do vídeo">
-        <div class="upload-progress-topo">
-          <span class="upload-progress-rotulo" id="uploadProgressRotulo">Enviando arquivo...</span>
-          <span class="upload-progress-porcentagem" id="uploadProgressValor">0%</span>
-        </div>
-        <div class="upload-progress-trilho">
-          <div class="upload-progress-fill" id="uploadProgressFill"></div>
-        </div>
-      </div>
-      <div class="upload-status hidden" id="uploadStatus"></div>
-      <button class="btn-primary" id="uploadSubmit" type="submit">Enviar</button>
-    </form>
-  </div>
 
   <main class="page home-page">
     <div class="section-title-row home-title-row">

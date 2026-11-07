@@ -15,7 +15,6 @@
  */
 import { consultarCatalogo } from "./catalog.js";
 import { escapeHtml } from "./recommendations.js";
-import { iniciarUiUpload } from "./upload.js";
 import { API_BASE_URL } from "./api.js";
 import { definirParametro, parametro } from "./busca.js";
 
@@ -133,10 +132,11 @@ function atualizarUrlDaBusca(termo) {
   definirParametro("q", termo);
 }
 
-// Upload pela interface: quando a transcodificação completa, recarrega a
-// grade para o card do vídeo novo aparecer (mantendo o termo da busca).
-iniciarUiUpload({
-  onSucesso: () => carregar(elements.searchInput.value.trim()),
+// O upload acontece em NOVA ABA (upload.html, aberta pelo botão do topo).
+// Quando o usuário volta para cá, a grade recarrega sozinha: o card do
+// vídeo publicado aparece sem precisar de F5 (mantendo o termo da busca).
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden) carregar(elements.searchInput.value.trim());
 });
 
 function buscarPeloFormulario() {
