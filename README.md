@@ -216,17 +216,27 @@ GET /videos/{id}/master.m3u8 ──► HLS.js toca o vídeo adaptativo
 POST /watch ──► alimenta o ranking e as recomendações do usuário
 ```
 
-### Upload pela home: modal com barra de progresso
+### Upload pela home: página dedicada em nova aba
 
-O botão **Enviar vídeo** (home) abre o modal que faz o `POST /upload` multipart
-via `XMLHttpRequest` — é o que permite mostrar **a barra de progresso com o %
-e os MB já enviados** (o `fetch` não expõe progresso de upload). Terminado o
-envio, o modal faz o polling de `GET /status/{id}` e mostra cada fase
-(fila → processando → publicado).
+O botão **Enviar vídeo** (home) abre **`upload.html` em NOVA ABA** — a página
+dedicada de publicação (`js/upload-page.js`):
+
+- zona de clique/arraste para o arquivo, com **prévia local** (blob:) do
+  vídeo escolhido antes de subir;
+- a barra grande faz o `POST /upload` multipart via `XMLHttpRequest` — é o
+  que permite mostrar **a barra acompanhando o progresso EXATO do envio** (o
+  `fetch` não expõe progresso de upload), com **% e MB enviados** ao vivo;
+- terminado o envio, a barra entra no modo indeterminado (segmento
+  deslizante) e a página faz o polling de `GET /status/{id}` mostrando cada
+  fase (1 Envio → 2 Transcodificação → 3 Publicado);
+- ao concluir, aparece o painel com **▶ Assistir agora** (watch page do
+  vídeo) e **Enviar outro vídeo**;
+- quando a aba da home volta ao foco, a grade recarrega sozinha e o card do
+  vídeo publicado aparece sem F5.
 
 Se a fila estiver fora do ar (a API responde `fila: "indisponivel"`) ou o
-status ficar preso em `pending` por 90s (nenhum worker consumindo), o modal
-**avisa na hora o que verificar** em vez de ficar travado até o timeout.
+status ficar preso em `pending` por 90s (nenhum worker consumindo), a página
+**avisa na hora o que verificar** em vez de ficar travada até o timeout.
 
 ## Modo rápido: subir tudo com um comando só
 
@@ -325,7 +335,7 @@ player faz na tela quando o play falha.
 | O player diz "os arquivos HLS não foram encontrados" | Vídeo `completed` no banco, mas a pasta `videos/{id}/` não tem `master.m3u8` (ela não vai para o git — é gerada localmente) | `GET /media/{video_id}` mostra o que existe no disco; rode `python scripts/demo_completo.py` ou reenvie o vídeo pela home |
 | A home está vazia, mas o `/catalogo` tem vídeos | Todos estão sem mídia (`prontos=1` filtra) ou com status diferente de `completed` | `GET /catalogo` (sem filtro) mostra todos; confira `media_pronta` de cada um |
 | "A API não respondeu em http://localhost:8000" | Backend fora do ar, ou o front aberto em outra origem sem CORS | Suba `uvicorn app.main:app --reload`; se usar Live Server, confira o `API_BASE_URL` do `config.js` |
-| **Travado na tela de upload** ("Processando..." / "Transcodificando..." que nunca termina) | O Redis e/ou o worker Celery não estão rodando: o upload até é salvo (a API responde `"fila": "indisponivel"`), mas nada processa a tarefa e o `/status` fica em `pending` para sempre | Suba a stack completa: `docker compose up -d --build` (Opção A) ou `python scripts/subir_tudo.py` (Opção B). O modal agora **avisa em ~90s** em vez de ficar 10 min travado. No Docker, use o `docker-compose.yml` atualizado: sem os volumes compartilhados (`uploads`, `videos`, `data`), o worker não enxerga o arquivo enviado e a transcodificação falha |
+| **Travado na tela de upload** ("Processando..." / "Transcodificando..." que nunca termina) | O Redis e/ou o worker Celery não estão rodando: o upload até é salvo (a API responde `"fila": "indisponivel"`), mas nada processa a tarefa e o `/status` fica em `pending` para sempre | Suba a stack completa: `docker compose up -d --build` (Opção A) ou `python scripts/subir_tudo.py` (Opção B). A página de upload **avisa em ~90s** em vez de ficar 10 min travada. No Docker, use o `docker-compose.yml` atualizado: sem os volumes compartilhados (`uploads`, `videos`, `data`), o worker não enxerga o arquivo enviado e a transcodificação falha |
 
 ## Estrutura de pastas
 
@@ -341,10 +351,11 @@ projeto-a3/
 │   ├── status/                    # GET /status/{video_id} (Redis, fallback banco)
 │   └── database/                  # Supabase + fallback local (data/videos.json)
 ├── player-adaptativo/player-adaptativo/   # Frontend (HLS.js, servido em /player/)
-│   ├── home.html                  # Catálogo (grade + busca + upload)
+│   ├── home.html                  # Catálogo (grade + busca; botão abre a aba de upload)
+│   ├── upload.html                # Página dedicada de upload (nova aba, barra de 3 fases)
 │   ├── index.html                 # Página do player (watch page)
 │   ├── config.js                  # Origem da API (mesma origem ou localhost:8000)
-│   └── js/                        # api.js, catalog.js, player.js, home.js, ...
+│   └── js/                        # api.js, catalog.js, player.js, home.js, upload-page.js, ...
 ├── scripts/
 │   ├── demo_completo.py           # Demo E2E: upload → fila → HLS → trending
 │   ├── seed_e2e.py                # Cenário de teste do player (sem Redis/worker)

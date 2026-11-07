@@ -849,3 +849,202 @@ a.home-card .card-content {
 }
 
 .player-error a:hover { background: var(--surface-2); }
+
+/* ---------------------------------------------------------------------------
+   Página de upload dedicada (upload.html — aberta em NOVA ABA pela home)
+   --------------------------------------------------------------------------- */
+.upload-page {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 32px 24px 64px;
+}
+
+.upload-page h1 { margin: 0 0 6px; font-size: 26px; }
+
+.upload-intro {
+  margin: 0 0 22px;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+/* Etapas 1 → 2 → 3 (envio, transcodificação, publicado). */
+.upload-steps {
+  list-style: none;
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 0;
+  margin: 0 0 22px;
+}
+
+.upload-steps li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 14px 7px 8px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.upload-steps li span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  font-size: 12px;
+}
+
+.upload-steps li.ativo {
+  color: var(--text);
+  border-color: var(--accent);
+}
+
+.upload-steps li.ativo span {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.upload-steps li.feito { color: #7dde92; }
+
+.upload-steps li.feito span {
+  background: rgba(125, 222, 146, .16);
+  border-color: #7dde92;
+  color: #7dde92;
+}
+
+/* Cartão do formulário (mesmo visual do modal-card que era da home). */
+.upload-card {
+  display: grid;
+  gap: 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 22px;
+}
+
+/* Zona de seleção: clique ou arraste. O input[type=file] fica invisível
+   cobrindo a área inteira — o clique nativo abre o seletor, sem JS. */
+.upload-dropzone {
+  position: relative;
+  display: grid;
+  gap: 4px;
+  justify-items: center;
+  text-align: center;
+  padding: 30px 18px;
+  border: 2px dashed var(--border);
+  border-radius: 12px;
+  background: var(--surface-2);
+  color: var(--muted);
+  font-size: 13px;
+  transition: border-color .15s ease, background .15s ease;
+}
+
+.upload-dropzone strong { color: var(--text); font-size: 15px; }
+
+.upload-dropzone:hover,
+.upload-dropzone.arrastando {
+  border-color: var(--accent);
+  background: rgba(255, 61, 61, .06);
+}
+
+.upload-dropzone input[type="file"] {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+/* Prévia local do arquivo escolhido (blob: — ainda não é a mídia do servidor). */
+.upload-preview { display: grid; gap: 8px; }
+
+.upload-preview video {
+  width: 100%;
+  max-height: 300px;
+  border-radius: 10px;
+  background: var(--player-bg);
+  border: 1px solid var(--border);
+}
+
+.upload-arquivo-info { color: var(--muted); font-size: 13px; }
+
+/* Barra GRANDE da página (a do modal era compacta). */
+.upload-progress.grande { margin: 6px 0 2px; }
+
+.upload-progress.grande .upload-progress-trilho { height: 18px; }
+
+.upload-progress.grande .upload-progress-topo { font-size: .92rem; }
+
+.upload-progress.grande .upload-progress-porcentagem { font-size: 1.05rem; }
+
+/* Painel de sucesso (fase 3): link da watch page + "enviar outro". */
+.upload-resultado {
+  display: grid;
+  gap: 8px;
+  justify-items: start;
+  margin-top: 18px;
+  background: rgba(125, 222, 146, .08);
+  border: 1px solid rgba(125, 222, 146, .45);
+  border-radius: 14px;
+  padding: 18px 20px;
+}
+
+.upload-resultado strong { color: #7dde92; font-size: 16px; }
+
+.upload-resultado p { margin: 0; color: var(--muted); font-size: 13.5px; }
+
+.upload-resultado-acoes {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 6px;
+}
+
+.upload-resultado-acoes a {
+  text-decoration: none;
+  display: inline-block;
+}
+
+.btn-secondary {
+  background: transparent;
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  padding: 9px 16px;
+  font-weight: 600;
+  transition: background .15s ease;
+}
+
+.btn-secondary:hover { background: var(--surface-2); }
+
+/* O botão "Enviar vídeo" da topbar virou <a> — mantém o visual de botão. */
+a.btn-primary {
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+}
+
+.upload-voltar {
+  color: var(--muted);
+  text-decoration: none;
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.upload-voltar:hover { color: var(--text); }
+
+@media (max-width: 640px) {
+  .upload-page { padding: 24px 16px 48px; }
+  .upload-steps { gap: 6px; }
+  .upload-steps li { padding: 6px 10px 6px 7px; font-size: 12px; }
+}

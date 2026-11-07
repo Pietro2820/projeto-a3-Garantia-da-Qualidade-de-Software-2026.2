@@ -165,3 +165,34 @@ describe("home — busca", () => {
     expect(vazio.querySelector("strong").textContent).toContain("xyz");
   });
 });
+
+describe("home — upload em nova aba", () => {
+  test("o botão Enviar vídeo é um link para upload.html aberto em nova aba (sem modal)", () => {
+    const home = new DOMParser().parseFromString(homeHtml, "text/html");
+
+    const link = home.querySelector("#uploadOpenButton");
+    expect(link).not.toBeNull();
+    expect(link.getAttribute("href")).toBe("./upload.html");
+    expect(link.getAttribute("target")).toBe("_blank");
+    expect(link.getAttribute("rel")).toBe("noopener");
+    // O modal antigo saiu da home: a barra grande vive na página dedicada.
+    expect(home.querySelector("#uploadModal")).toBeNull();
+  });
+
+  test("voltar o foco para a home recarrega o catálogo (vídeo publicado aparece sem F5)", async () => {
+    const fetchMock = mockarCatalogo([V1]);
+
+    await subirHome();
+    const antes = fetchMock.mock.calls.filter(([url]) =>
+      String(url).includes("/catalogo")).length;
+
+    // A aba de upload fica em outra janela: quando esta volta ao foco
+    // (visibilitychange), a grade recarrega sozinha.
+    document.dispatchEvent(new Event("visibilitychange"));
+    await flush();
+
+    const depois = fetchMock.mock.calls.filter(([url]) =>
+      String(url).includes("/catalogo")).length;
+    expect(depois).toBeGreaterThan(antes);
+  });
+});
