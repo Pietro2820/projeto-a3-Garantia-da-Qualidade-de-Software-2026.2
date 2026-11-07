@@ -224,6 +224,55 @@ def test_processar_upload_retorna_resposta_imediata_sem_esperar_o_video():
     assert resultado.result == {"video_id": "abc-123", "status": "processing"}
 
 
+def test_processar_upload_tem_tres_tentativas():
+    """Correção A4: a ponte entre as filas ganhou o mesmo blindagem de retry
+    que a transcodificação já tinha."""
+    assert tasks.processar_upload.max_retries == 3
+
+
+def test_processar_upload_com_broker_instavel_volta_a_pending_e_pede_retry():
+    """Correção A4: falha ao publicar a task de transcodificação NÃO pode
+    deixar o vídeo preso em 'processing' para ever. Volta a 'pending' e
+    pede retry com backoff."""
+    with patch.object(tasks, "set_status") as mock_set_status, \
+         patch.object(tasks.transcodificar_video, "delay",
+                      side_effect=ConnectionError("broker reiniciando")), \
+         patch.object(tasks.processar_upload, "retry",
+                      side_effect=RetryInterrompido) as mock_retry:
+        tasks.processar_upload.apply(args=("abc-123", "/x.mp4"), throw=False)
+
+    estados = [chamada.args[1] for chamada in mock_set_status.call_args_list]
+    assert estados == ["processing", "pending"]  # marcou processing, voltou a pending
+    assert mock_retry.call_count == 1
+    assert isinstance(mock_retry.call_args.kwargs["exc"], ConnectionError)
+    assert mock_retry.call_args.kwargs["countdown"] == 30  # backoff crescente
+
+
+def test_processar_upload_esgota_as_tentativas_e_marca_failed():
+    """Esgotados os retries: 'failed' com o motivo — ninguém fica no escuro."""
+    with patch.object(tasks, "set_status") as mock_set_status, \
+         patch.object(tasks.transcodificar_video, "delay",
+                      side_effect=ConnectionError("broker fora do ar")):
+        resultado = tasks.processar_upload.apply(args=("abc-123", "/x.mp4"), throw=False)
+
+    assert resultado.failed()
+    estados = [chamada.args[1] for chamada in mock_set_status.call_args_list]
+    assert estados[-1] == "failed"
+    # A última chamada carrega o motivo legível (o que o /status mostra ao front)
+    assert "fila de transcodificação indisponível" in mock_set_status.call_args_list[-1].args[2]["erro"]
+
+
+def test_processar_upload_sobrevive_a_redis_piscado_ao_marcar_processing():
+    """O set_status inicial é defensivo: Redis indisponível naquele instante
+    não pode impedir a publicação da transcodificação."""
+    with patch.object(tasks, "set_status", side_effect=ConnectionError("redis piscou")), \
+         patch.object(tasks.transcodificar_video, "delay") as mock_delay:
+        resultado = tasks.processar_upload.apply(args=("abc-123", "/x.mp4"), throw=False)
+
+    assert resultado.successful()
+    mock_delay.assert_called_once_with("abc-123", "/x.mp4")
+
+
 # ---------------------------------------------------------------------------
 # notificar_status
 # ---------------------------------------------------------------------------
