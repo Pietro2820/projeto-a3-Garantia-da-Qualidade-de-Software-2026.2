@@ -51,13 +51,23 @@
         <input type="text" id="uploadCategoria" maxlength="60">
       </label>
 
-      <!-- Barra de progresso do ENVIO do arquivo (POST /upload via XHR).
-           Visível só durante a fase de envio; some quando começa a
-           transcodificação (o texto de status assume a partir daí). -->
+      <!-- Barra de progresso animada — acompanha o vídeo ATÉ O CARREGAMENTO
+           FINAL, passando por todas as fases (js/upload.js):
+             1. ENVIO (POST /upload via XHR): preenchida pelo % real do
+                arquivo, com gradiente em movimento e brilho;
+             2. TRANSCODIFICAÇÃO (polling de /status): segmento deslizante
+                (modo indeterminado — o FFmpeg não informa %);
+             3. PUBLICADO: 100% verde antes do modal fechar. -->
       <div class="upload-progress hidden" id="uploadProgress" role="progressbar"
            aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"
            aria-label="Progresso do envio do vídeo">
-        <div class="upload-progress-fill" id="uploadProgressFill"></div>
+        <div class="upload-progress-topo">
+          <span class="upload-progress-rotulo" id="uploadProgressRotulo">Enviando arquivo...</span>
+          <span class="upload-progress-porcentagem" id="uploadProgressValor">0%</span>
+        </div>
+        <div class="upload-progress-trilho">
+          <div class="upload-progress-fill" id="uploadProgressFill"></div>
+        </div>
       </div>
       <div class="upload-status hidden" id="uploadStatus"></div>
       <button class="btn-primary" id="uploadSubmit" type="submit">Enviar</button>

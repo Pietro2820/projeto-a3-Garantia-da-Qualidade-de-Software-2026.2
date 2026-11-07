@@ -131,9 +131,14 @@ export function iniciarUiUpload({ onSucesso, intervaloMs, timeoutMs, timeoutFila
   const botaoSubmit = document.querySelector("#uploadSubmit");
   const barraEl = document.querySelector("#uploadProgress");
   const barraFill = document.querySelector("#uploadProgressFill");
+  const barraRotulo = document.querySelector("#uploadProgressRotulo");
+  const barraValor = document.querySelector("#uploadProgressValor");
 
   const abrir = () => modal.classList.remove("hidden");
-  const fechar = () => modal.classList.add("hidden");
+  const fechar = () => {
+    modal.classList.add("hidden");
+    esconderBarra();
+  };
 
   botaoAbrir?.addEventListener("click", abrir);
   botaoFechar?.addEventListener("click", fechar);
@@ -146,14 +151,19 @@ export function iniciarUiUpload({ onSucesso, intervaloMs, timeoutMs, timeoutFila
     statusEl.className = `upload-status ${classe}`.trim();
   }
 
-  /** Barra de progresso do ENVIO (fase POST /upload — eventos do XHR). */
+  function rotulo(texto) {
+    if (barraRotulo) barraRotulo.textContent = texto;
+  }
+
+  /** Fase 1 — ENVIO: barra preenchida pelo % real do XHR, com animação. */
   function atualizarBarra({ fracao = 0, enviado = 0, total = 0 } = {}) {
     const pct = Math.max(0, Math.min(100, Math.round(fracao * 100)));
     if (barraEl) {
-      barraEl.classList.remove("hidden");
+      barraEl.classList.remove("hidden", "indeterminada", "concluida");
       barraEl.setAttribute("aria-valuenow", String(pct));
     }
     if (barraFill) barraFill.style.width = `${pct}%`;
+    if (barraValor) barraValor.textContent = `${pct}%`;
     setStatus(
       total > 0
         ? `Enviando arquivo... ${pct}% (${formatarBytes(enviado)} de ${formatarBytes(total)})`
@@ -161,10 +171,34 @@ export function iniciarUiUpload({ onSucesso, intervaloMs, timeoutMs, timeoutFila
     );
   }
 
+  /** Fase 2 — TRANSCODIFICAÇÃO: o FFmpeg não informa %, então a barra entra
+   *  no modo indeterminado (segmento deslizante) até o status mudar. */
+  function modoIndeterminado(textoRotulo) {
+    if (!barraEl) return;
+    barraEl.classList.remove("hidden", "concluida");
+    barraEl.classList.add("indeterminada");
+    barraEl.removeAttribute("aria-valuenow");
+    if (barraValor) barraValor.textContent = "—";
+    rotulo(textoRotulo);
+  }
+
+  /** Fase 3 — PUBLICADO: 100% verde até o modal fechar. */
+  function marcarConcluida() {
+    if (!barraEl) return;
+    barraEl.classList.remove("indeterminada");
+    barraEl.classList.add("concluida");
+    barraEl.setAttribute("aria-valuenow", "100");
+    if (barraFill) barraFill.style.width = "100%";
+    if (barraValor) barraValor.textContent = "100%";
+    rotulo("Publicado no catálogo!");
+  }
+
   function esconderBarra() {
     barraEl?.classList.add("hidden");
+    barraEl?.classList.remove("indeterminada", "concluida");
     barraEl?.setAttribute("aria-valuenow", "0");
     if (barraFill) barraFill.style.width = "0%";
+    if (barraValor) barraValor.textContent = "0%";
   }
 
   form.addEventListener("submit", async (event) => {
@@ -193,21 +227,32 @@ export function iniciarUiUpload({ onSucesso, intervaloMs, timeoutMs, timeoutFila
           onEnviando: () => setStatus("Enviando arquivo para a API..."),
           onProgress: atualizarBarra,
           onProcessando: () => {
-            esconderBarra();
+            // Fase 2: a barra NÃO some — entra no modo indeterminado e anima
+            // enquanto a transcodificação roda (o professor pediu a barra
+            // preenchida até o carregamento FINAL do vídeo).
+            modoIndeterminado("Transcodificando em HLS...");
             setStatus(
               "Upload concluído! Transcodificando em HLS — de segundos a alguns minutos..."
             );
           },
-          onStatus: (status) =>
+          onStatus: (status) => {
             setStatus(
               status.status === "pending"
                 ? "Na fila, aguardando um worker iniciar o processamento..."
                 : `Processando... status: ${status.status}`
-            ),
+            );
+            rotulo(
+              status.status === "pending"
+                ? "Na fila, aguardando um worker..."
+                : "Transcodificando em HLS..."
+            );
+          },
         },
         { intervaloMs, timeoutMs, timeoutFilaMs }
       );
 
+      // Fase 3: 100% verde por um instante — o modal fecha em seguida.
+      marcarConcluida();
       setStatus("Vídeo pronto e publicado no catálogo!", "ok");
       form.reset();
       onSucesso?.();
