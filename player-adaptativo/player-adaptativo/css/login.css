@@ -1,0 +1,356 @@
+/* ---------------------------------------------------------------------------
+   Tela de login (login.html) — estilos específicos da autenticação.
+
+   Reaproveita os tokens e a base do player.css (variáveis :root, .brand,
+   .btn-primary, reset de fonte). Aqui ficam só o layout da tela, os campos
+   com ícone, o botão de mostrar/esconder senha e os estados de validação.
+   --------------------------------------------------------------------------- */
+
+.login-body {
+  min-height: 100svh;
+  display: grid;
+  place-items: center;
+  padding: 28px 16px;
+  background:
+    radial-gradient(60vw 60vh at 15% 0%, rgba(255, 61, 61, .08), transparent 60%),
+    radial-gradient(50vw 50vh at 90% 100%, rgba(255, 61, 61, .05), transparent 60%),
+    var(--bg);
+}
+
+.login-wrap {
+  width: min(420px, 100%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 22px;
+}
+
+.login-brand {
+  font-size: 26px;
+}
+
+.login-rodape {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  text-align: center;
+  letter-spacing: .2px;
+}
+
+/* ---------------------------------------------------------------------------
+   Card principal
+   --------------------------------------------------------------------------- */
+.login-card {
+  width: 100%;
+  padding: 30px 28px 26px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface);
+  box-shadow: 0 18px 50px rgba(0, 0, 0, .5);
+  animation: login-entrada .35s ease-out;
+}
+
+@keyframes login-entrada {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.login-header {
+  margin-bottom: 22px;
+}
+
+.login-header h1 {
+  margin: 0 0 6px;
+  font-size: 24px;
+}
+
+.login-header p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+/* ---------------------------------------------------------------------------
+   Campos com ícone à esquerda
+   --------------------------------------------------------------------------- */
+#loginForm {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.field label {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.input-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.input-icone {
+  position: absolute;
+  left: 12px;
+  width: 17px;
+  height: 17px;
+  color: var(--muted);
+  pointer-events: none;
+  transition: color .15s ease;
+}
+
+.input-wrap input {
+  width: 100%;
+  min-width: 0;
+  padding: 11px 46px 11px 40px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  outline: none;
+  background: var(--surface-2);
+  color: var(--text);
+  transition: border-color .15s ease, box-shadow .15s ease;
+}
+
+.input-wrap input::placeholder {
+  color: #818a97;
+}
+
+/* Foco: ícone acompanha o realce do campo (borda + anel suave no accent). */
+.input-wrap:focus-within .input-icone {
+  color: var(--accent);
+}
+
+.input-wrap input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(255, 61, 61, .18);
+}
+
+/* Navegação por teclado (acessibilidade) — anel também no foco via Tab. */
+.input-wrap input:focus-visible {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(255, 61, 61, .18);
+}
+
+/* ---------------------------------------------------------------------------
+   Botão mostrar/esconder senha
+   --------------------------------------------------------------------------- */
+.toggle-senha {
+  position: absolute;
+  right: 6px;
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--muted);
+  transition: color .15s ease, background .15s ease;
+}
+
+.toggle-senha svg {
+  width: 18px;
+  height: 18px;
+}
+
+.toggle-senha:hover {
+  color: var(--text);
+  background: rgba(255, 255, 255, .07);
+}
+
+.toggle-senha:focus-visible {
+  outline: none;
+  color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(255, 61, 61, .18);
+}
+
+/* Estado pressionado = senha visível (olho fechado/riscado). */
+.toggle-senha.ativo {
+  color: var(--accent);
+}
+
+.toggle-senha .olho-fechado {
+  display: none;
+}
+
+.toggle-senha.ativo .olho-aberto {
+  display: none;
+}
+
+.toggle-senha.ativo .olho-fechado {
+  display: block;
+}
+
+/* ---------------------------------------------------------------------------
+   Estados de validação e aviso de Caps Lock
+   --------------------------------------------------------------------------- */
+.input-wrap input[aria-invalid="true"] {
+  border-color: #ff6b6b;
+}
+
+.input-wrap input[aria-invalid="true"]:focus {
+  box-shadow: 0 0 0 3px rgba(255, 107, 107, .16);
+}
+
+.field-erro {
+  margin: 0;
+  color: #ff8f8f;
+  font-size: 12.5px;
+  line-height: 1.4;
+}
+
+.caps-aviso {
+  margin: 0;
+  color: #ffd479;
+  font-size: 12.5px;
+}
+
+/* ---------------------------------------------------------------------------
+   Linha "lembrar de mim" + "esqueci a senha" e links
+   --------------------------------------------------------------------------- */
+.login-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 13px;
+}
+
+.lembrar {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.lembrar input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.lembrar:hover span {
+  color: var(--text);
+}
+
+/* Botões com aparência de link — são <button> para não navegar a lugar algum
+   enquanto a funcionalidade não existe no backend. */
+.link {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  font-size: inherit;
+  cursor: pointer;
+}
+
+.link:hover {
+  text-decoration: underline;
+}
+
+.link:focus-visible {
+  outline: none;
+  border-radius: 4px;
+  box-shadow: 0 0 0 3px rgba(255, 61, 61, .18);
+}
+
+/* ---------------------------------------------------------------------------
+   Botão de enviar (estado de carregamento com spinner)
+   --------------------------------------------------------------------------- */
+.btn-entrar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  width: 100%;
+  padding: 12px 16px;
+  font-weight: 700;
+}
+
+.spinner-mini {
+  display: none;
+  width: 15px;
+  height: 15px;
+  border: 2.5px solid rgba(255, 255, 255, .35);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin .8s linear infinite;
+}
+
+.btn-entrar.carregando .rotulo {
+  display: none;
+}
+
+.btn-entrar.carregando .spinner-mini {
+  display: inline-block;
+}
+
+/* ---------------------------------------------------------------------------
+   Aviso informativo (funcionalidades ainda não integradas) + rodapé do card
+   --------------------------------------------------------------------------- */
+.login-aviso {
+  margin: 14px 0 0;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-2);
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.login-cadastro {
+  margin: 18px 0 0;
+  color: var(--muted);
+  font-size: 13.5px;
+  text-align: center;
+}
+
+/* ---------------------------------------------------------------------------
+   Responsivo e acessibilidade
+   --------------------------------------------------------------------------- */
+@media (max-width: 480px) {
+  .login-body {
+    padding: 20px 14px;
+  }
+
+  .login-card {
+    padding: 24px 20px 22px;
+    border-radius: 12px;
+  }
+
+  .login-brand {
+    font-size: 24px;
+  }
+
+  .login-rodape {
+    max-width: 300px;
+    line-height: 1.6;
+  }
+}
+
+/* Respeita quem prefere menos movimento (reduz animações decorativas). */
+@media (prefers-reduced-motion: reduce) {
+  .login-card {
+    animation: none;
+  }
+
+  .spinner-mini {
+    animation-duration: 1.6s;
+  }
+}

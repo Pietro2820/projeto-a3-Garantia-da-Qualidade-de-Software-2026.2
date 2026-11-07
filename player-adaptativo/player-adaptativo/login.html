@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Entrar no EduStream — plataforma de streaming de vídeo educacional">
+  <title>EduStream — Entrar</title>
+  <link rel="stylesheet" href="./css/player.css">
+  <link rel="stylesheet" href="./css/login.css">
+</head>
+<body class="login-body">
+
+  <main class="login-wrap">
+
+    <!-- Marca no topo — também é a rota de fuga para quem só quer voltar ao catálogo. -->
+    <a class="brand login-brand" href="./home.html" aria-label="EduStream — voltar para o início">Edu<span>Stream</span></a>
+
+    <section class="login-card" aria-labelledby="loginTitulo">
+
+      <header class="login-header">
+        <h1 id="loginTitulo">Entrar</h1>
+        <p>Acesse sua conta para continuar assistindo</p>
+      </header>
+
+      <form id="loginForm" novalidate>
+
+        <!-- E-mail -->
+        <div class="field">
+          <label for="email">E-mail</label>
+          <div class="input-wrap">
+            <svg class="input-icone" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
+              <polyline points="22,6 12,13 2,6"/>
+            </svg>
+            <input type="email" id="email" name="email" placeholder="voce@exemplo.com"
+                   autocomplete="email" inputmode="email" spellcheck="false"
+                   aria-describedby="emailErro" required>
+          </div>
+          <p class="field-erro" id="emailErro" hidden></p>
+        </div>
+
+        <!-- Senha + botão mostrar/esconder -->
+        <div class="field">
+          <label for="senha">Senha</label>
+          <div class="input-wrap">
+            <svg class="input-icone" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+              <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+            </svg>
+            <input type="password" id="senha" name="senha" placeholder="Sua senha"
+                   autocomplete="current-password" minlength="8"
+                   aria-describedby="senhaErro capsAviso" required>
+            <button type="button" class="toggle-senha" id="toggleSenha"
+                    aria-label="Mostrar senha" aria-pressed="false" title="Mostrar senha">
+              <!-- Olho aberto (senha oculta) -->
+              <svg class="olho-aberto" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                <circle cx="12" cy="12" r="3"/>
+              </svg>
+              <!-- Olho fechado (senha visível) -->
+              <svg class="olho-fechado" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/>
+                <line x1="1" y1="1" x2="23" y2="23"/>
+              </svg>
+            </button>
+          </div>
+          <p class="caps-aviso" id="capsAviso" hidden>Caps Lock ativado</p>
+          <p class="field-erro" id="senhaErro" hidden></p>
+        </div>
+
+        <!-- Lembrar-me + esqueci a senha -->
+        <div class="login-row">
+          <label class="lembrar">
+            <input type="checkbox" id="lembrar" name="lembrar">
+            <span>Lembrar de mim</span>
+          </label>
+          <button type="button" class="link" id="esqueciSenha">Esqueci minha senha</button>
+        </div>
+
+        <button type="submit" class="btn-primary btn-entrar" id="btnEntrar">
+          <span class="rotulo">Entrar</span>
+          <span class="spinner-mini" aria-hidden="true"></span>
+        </button>
+      </form>
+
+      <!-- Avisos não-bloqueantes (ex.: funcionalidades que ainda serão integradas à API). -->
+      <p class="login-aviso" id="loginAviso" role="status" hidden></p>
+
+      <p class="login-cadastro">Não tem uma conta? <button type="button" class="link" id="criarConta">Criar conta</button></p>
+    </section>
+
+    <p class="login-rodape">Projeto A3 · Garantia &amp; Qualidade de Software</p>
+  </main>
+
+  <script type="module" src="./js/login.js"></script>
+</body>
+</html>
