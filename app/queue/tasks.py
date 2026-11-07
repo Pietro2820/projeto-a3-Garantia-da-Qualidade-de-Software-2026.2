@@ -84,12 +84,46 @@ def transcodificar_video(self, video_id: str, caminho_original: str):
     return resultado
 
 
-@celery_app.task(name="app.queue.tasks.processar_upload")
-def processar_upload(video_id: str, caminho_arquivo: str):
-    """Dispara a etapa de transcodificação após validar o upload."""
-    set_status(video_id, "processing")
+@celery_app.task(
+    name="app.queue.tasks.processar_upload",
+    bind=True,
+    max_retries=3,
+    default_retry_delay=30,
+)
+def processar_upload(self, video_id: str, caminho_arquivo: str):
+    """Dispara a etapa de transcodificação após validar o upload.
+
+    Correção A4 da avaliação: antes, se o `.delay()` da transcodificação
+    falhasse (Redis instável, broker reiniciando no meio do fluxo), a exceção
+    subia sem tratamento e o vídeo ficava PRESO em "processing" para sempre —
+    sem retry, sem "failed", sem nenhuma pista para o front. Agora a
+    publicação é blindada: falha transiente volta o vídeo a "pending" e pede
+    retry com backoff; esgotadas as tentativas, marca "failed" com o motivo.
+    """
+    try:
+        set_status(video_id, "processing")
+    except Exception as exc:  # Redis piscou entre consumir e marcar: segue
+        logger.warning(
+            "Redis indisponível ao marcar 'processing' de %s: %s", video_id, exc
+        )
     _sincronizar_banco(video_id, "processing")
-    transcodificar_video.delay(video_id, caminho_arquivo)
+
+    try:
+        transcodificar_video.delay(video_id, caminho_arquivo)
+    except Exception as exc:
+        if self.request.retries >= self.max_retries:
+            set_status(
+                video_id,
+                "failed",
+                {"erro": f"fila de transcodificação indisponível: {exc}"},
+            )
+            _sincronizar_banco(video_id, "failed")
+            raise
+        # Volta a "pending" antes do retry: o vídeo não está mais sendo
+        # processado de verdade, e o /status precisa refletir isso.
+        set_status(video_id, "pending")
+        raise self.retry(exc=exc, countdown=30 * (self.request.retries + 1))
+
     return {"video_id": video_id, "status": "processing"}
 
 

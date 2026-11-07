@@ -26,13 +26,19 @@ class FakeRedis:
 
     Implementa só `set`/`get` (com `decode_responses=True`, como o cliente
     real é criado no módulo) guardando tudo num dicionário.
+
+    O `set` também aceita `ex=` (TTL em segundos, o argumento do SETEX real)
+    e lembra o último valor recebido — é assim que os testes verificam que
+    as chaves NÃO são gravadas para sempre (correção A3 da avaliação).
     """
 
     def __init__(self) -> None:
         self.dados: dict[str, str] = {}
+        self.ultimo_ttl: int | None = None
 
-    def set(self, chave: str, valor: str) -> bool:
+    def set(self, chave: str, valor: str, ex: int | None = None) -> bool:
         self.dados[chave] = valor
+        self.ultimo_ttl = ex
         return True
 
     def get(self, chave: str) -> str | None:
@@ -185,3 +191,37 @@ def test_videos_diferentes_tem_status_independentes(fake_redis):
     assert status_store.get_status("video-1")["status"] == "completed"
     assert status_store.get_status("video-2")["status"] == "failed"
     assert len(fake_redis.dados) == 2
+
+
+# ---------------------------------------------------------------------------
+# TTL de expiração (correção A3 da avaliação: chaves sem TTL acumulavam
+# para sempre no Redis — vazamento de memória em produção)
+# ---------------------------------------------------------------------------
+
+def test_set_status_grava_com_ttl_aplicado(fake_redis):
+    """A chave expira sozinha: o set recebe `ex=` com o TTL configurado."""
+    status_store.set_status("abc-123", "pending")
+
+    assert fake_redis.ultimo_ttl == status_store.STATUS_TTL_SEGUNDOS
+
+
+def test_ttl_padrao_e_de_sete_dias_e_positivo():
+    """7 dias: cobre investigação pós-incidente sem estourar a memória."""
+    assert status_store.STATUS_TTL_SEGUNDOS == 7 * 24 * 60 * 60
+
+
+def test_ttl_pode_ser_ajustado_por_variavel_de_ambiente(monkeypatch):
+    """Ambientes com janela menor de retenção reduzem o TTL sem tocar código."""
+    monkeypatch.setenv("STATUS_TTL_SEGUNDOS", "3600")
+
+    import importlib
+
+    importlib.reload(status_store)
+    try:
+        assert status_store.STATUS_TTL_SEGUNDOS == 3600
+    finally:
+        # Teardown manual: sem a variável, o reload devolve o padrão do módulo
+        # (o monkeypatch só desfaz o .env DEPOIS do teste — o reload precisa
+        # acontecer aqui dentro, senão o 3600 vazaria para os próximos testes).
+        monkeypatch.delenv("STATUS_TTL_SEGUNDOS", raising=False)
+        importlib.reload(status_store)
