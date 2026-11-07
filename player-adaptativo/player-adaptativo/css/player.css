@@ -656,11 +656,44 @@ a.home-card .card-content {
 .upload-status.erro { color: #ff8f8f; }
 .upload-status.ok { color: #7dde92; }
 
-/* Barra de progresso do envio do arquivo (fase POST /upload — js/upload.js).
-   Ocupa o mesmo ritmo visual do modal; o fill cresce conforme os eventos
-   upload.onprogress do XHR chegam. */
+/* Barra de progresso ANIMADA do upload (js/upload.js) — acompanha o vídeo
+   até o carregamento final, em três fases:
+     1. ENVIO      — preenchida pelo % real do XHR, com gradiente fluindo e
+                     brilho (shimmer) percorrendo o preenchimento;
+     2. TRANSCODE  — modo "indeterminada": segmento deslizante no trilho
+                     (o FFmpeg não informa %, então animamos até o status
+                     virar completed/failed em vez de congelar a barra);
+     3. PUBLICADO  — estado "concluida": 100%, verde, sem animação. */
 .upload-progress {
-  height: 8px;
+  display: grid;
+  gap: 6px;
+  margin: 8px 0 10px;
+}
+
+.upload-progress-topo {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  font-size: .8rem;
+}
+
+.upload-progress-rotulo {
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.upload-progress-porcentagem {
+  color: var(--accent);
+  font-weight: 800;
+  font-variant-numeric: tabular-nums; /* os dígitos não "dançam" ao contar */
+}
+
+.upload-progress-trilho {
+  position: relative;
+  height: 12px;
   border-radius: 999px;
   background: var(--surface-2);
   border: 1px solid var(--border);
@@ -668,11 +701,89 @@ a.home-card .card-content {
 }
 
 .upload-progress-fill {
+  position: relative;
   height: 100%;
   width: 0;
   border-radius: 999px;
+  background: linear-gradient(90deg, var(--accent), #7dde92, var(--accent));
+  background-size: 200% 100%;
+  animation: upload-fluxo 1.8s linear infinite;
+  transition: width .25s ease;
+}
+
+/* Brilho que percorre o preenchimento enquanto o % cresce. */
+.upload-progress-fill::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(105deg,
+              transparent 32%, rgba(255, 255, 255, .38) 50%, transparent 68%);
+  transform: translateX(-120%);
+  animation: upload-brilho 1.5s ease-in-out infinite;
+}
+
+/* Fase 2: transcodificação — o segmento desliza de ponta a ponta. */
+.upload-progress.indeterminada .upload-progress-fill {
+  width: 0;
+  animation: none;
+}
+
+.upload-progress.indeterminada .upload-progress-fill::after {
+  display: none;
+}
+
+.upload-progress.indeterminada .upload-progress-trilho::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 38%;
+  border-radius: 999px;
   background: linear-gradient(90deg, var(--accent), #7dde92);
-  transition: width .15s ease;
+  box-shadow: 0 0 12px rgba(255, 61, 61, .45);
+  animation: upload-desliza 1.25s ease-in-out infinite;
+}
+
+/* Fase 3: publicado — 100% sólido, verde, parado. */
+.upload-progress.concluida .upload-progress-trilho::before {
+  display: none;
+}
+
+.upload-progress.concluida .upload-progress-fill {
+  width: 100%;
+  animation: none;
+  background: linear-gradient(90deg, var(--accent), #7dde92);
+}
+
+.upload-progress.concluida .upload-progress-fill::after {
+  display: none;
+}
+
+@keyframes upload-fluxo {
+  from { background-position: 0% 0; }
+  to   { background-position: 200% 0; }
+}
+
+@keyframes upload-brilho {
+  55%  { transform: translateX(120%); }
+  100% { transform: translateX(120%); }
+}
+
+@keyframes upload-desliza {
+  from { left: -40%; }
+  to   { left: 105%; }
+}
+
+/* Acessibilidade: quem pede menos animação recebe a informação sem movimento. */
+@media (prefers-reduced-motion: reduce) {
+  .upload-progress-fill { animation: none; }
+  .upload-progress-fill::after { display: none; }
+  .upload-progress.indeterminada .upload-progress-trilho::before {
+    animation: none;
+    left: 30%;
+    right: 30%;
+    width: auto;
+  }
 }
 
 /* ---------------------------------------------------------------------------

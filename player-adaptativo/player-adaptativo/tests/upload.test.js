@@ -346,6 +346,113 @@ describe("upload.js — barra de progresso do envio", () => {
   });
 });
 
+describe("upload.js — barra animada (3 fases até o carregamento final)", () => {
+  test("fase 1 ENVIO: rótulo e % acompanham o preenchimento da barra", async () => {
+    mockarRotas();
+    FakeXHR.auto = null;
+    subirHomeComModal();
+    await subirUiUpload();
+
+    preencherFormulario();
+    document.querySelector("#uploadForm")
+      .dispatchEvent(new Event("submit", { cancelable: true }));
+    await flush(2);
+
+    FakeXHR.ultima.emitirProgresso(0.4);
+    await flush(1);
+
+    expect(document.querySelector("#uploadProgressValor").textContent).toBe("40%");
+    expect(document.querySelector("#uploadProgressRotulo").textContent)
+      .toContain("Enviando");
+  });
+
+  test("fase 2 TRANSCODIFICAÇÃO: barra anima em modo indeterminado em vez de sumir", async () => {
+    // Status travado em "processing": o polling não conclui, e assim a
+    // janela indeterminada fica observável de forma determinística.
+    global.fetch = jest.fn(async (url) => {
+      const alvo = String(url);
+      if (alvo.includes("/status/v-novo")) {
+        return {
+          ok: true, status: 200,
+          json: async () => ({ video_id: "v-novo", status: "processing" }),
+        };
+      }
+      return { ok: true, status: 200, json: async () => ({ videos: [], total: 0 }) };
+    });
+    FakeXHR.auto = null;
+    subirHomeComModal();
+    await subirUiUpload();
+
+    preencherFormulario();
+    document.querySelector("#uploadForm")
+      .dispatchEvent(new Event("submit", { cancelable: true }));
+    await flush(2);
+
+    const barra = document.querySelector("#uploadProgress");
+    const valor = document.querySelector("#uploadProgressValor");
+
+    FakeXHR.ultima.emitirProgresso(1);
+    FakeXHR.ultima.concluir(200, { video_id: "v-novo", status: "pending", fila: "enfileirado" });
+    await flush(2);
+
+    // O envio terminou, mas a barra CONTINUA visível — agora animada no modo
+    // indeterminado enquanto a transcodificação roda (FFmpeg não informa %).
+    expect(barra.classList.contains("hidden")).toBe(false);
+    expect(barra.classList.contains("indeterminada")).toBe(true);
+    expect(barra.getAttribute("aria-valuenow")).toBeNull();
+    expect(valor.textContent).toBe("—");
+    expect(document.querySelector("#uploadProgressRotulo").textContent)
+      .toContain("Transcodificando");
+  });
+
+  test("fase 3 PUBLICADO: 100% verde antes do modal fechar", async () => {
+    mockarRotas();
+    subirHomeComModal();
+    // delayFecharMs alto: o modal continua aberto para inspecionar a barra.
+    await subirUiUpload({ delayFecharMs: 5000 });
+
+    preencherFormulario();
+    document.querySelector("#uploadForm")
+      .dispatchEvent(new Event("submit", { cancelable: true }));
+    await flush(12);
+
+    const barra = document.querySelector("#uploadProgress");
+    expect(document.querySelector("#uploadStatus").textContent)
+      .toContain("pronto e publicado");
+    expect(barra.classList.contains("hidden")).toBe(false);
+    expect(barra.classList.contains("concluida")).toBe(true);
+    expect(barra.getAttribute("aria-valuenow")).toBe("100");
+    expect(document.querySelector("#uploadProgressFill").style.width).toBe("100%");
+    expect(document.querySelector("#uploadProgressValor").textContent).toBe("100%");
+    expect(document.querySelector("#uploadProgressRotulo").textContent)
+      .toContain("Publicado");
+  });
+
+  test("erro no meio do envio: volta ao estado limpo (sem animação residual)", async () => {
+    FakeXHR.auto = null;
+    global.fetch = jest.fn(async () => ({ ok: true, status: 200, json: async () => ({}) }));
+    subirHomeComModal();
+    await subirUiUpload();
+
+    preencherFormulario();
+    document.querySelector("#uploadForm")
+      .dispatchEvent(new Event("submit", { cancelable: true }));
+    await flush(2);
+
+    const barra = document.querySelector("#uploadProgress");
+    FakeXHR.ultima.emitirProgresso(0.5);
+    await flush(1);
+    expect(barra.classList.contains("indeterminada")).toBe(false);
+
+    FakeXHR.ultima.concluirTexto(413, JSON.stringify({ detail: "Arquivo excede o tamanho máximo de 500MB." }));
+    await flush(4);
+
+    expect(barra.classList.contains("hidden")).toBe(true);
+    expect(barra.classList.contains("indeterminada")).toBe(false);
+    expect(barra.classList.contains("concluida")).toBe(false);
+  });
+});
+
 describe("upload.js — erros", () => {
   test("detail da API aparece legível no modal (sem stacktrace)", async () => {
     mockarRotas();
