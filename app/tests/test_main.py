@@ -64,6 +64,8 @@ def test_rota_de_status_esta_registrada():
     "rota",
     [
         "/",
+        "/login",
+        "/cadastro",
         "/upload",
         "/status/{video_id}",
         "/videos/{video_id}/relacionados",
@@ -91,6 +93,8 @@ def test_openapi_lista_os_endpoints_do_contrato():
     caminhos = client.get("/openapi.json").json()["paths"]
 
     for rota in (
+        "/login",
+        "/cadastro",
         "/upload",
         "/status/{video_id}",
         "/videos/{video_id}/relacionados",

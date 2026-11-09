@@ -99,6 +99,30 @@ export async function registerWatch(payload) {
 }
 
 /**
+ * Autenticação (tela de login, js/login.js).
+ *
+ * POST /login    {email, senha} -> 200 {usuario:{usuario_id,nome,email}}
+ *                              -> 401 credenciais erradas
+ *                              -> 503 banco indisponível/mal configurado
+ * POST /cadastro {nome, email, senha} -> 201 {usuario:{...}}
+ *                              -> 409 e-mail já tem conta
+ *                              -> 422 validação (mesmas regras da tela)
+ */
+export async function loginUsuario(payload) {
+  return requestJson("/login", {
+    method: "POST",
+    body: JSON.stringify(payload)
+  });
+}
+
+export async function cadastrarUsuario(payload) {
+  return requestJson("/cadastro", {
+    method: "POST",
+    body: JSON.stringify(payload)
+  });
+}
+
+/**
  * Envia um vídeo novo (multipart/form-data) para o POST /upload.
  *
  * Não passa pelo requestJson de propósito: ele fixaria Content-Type

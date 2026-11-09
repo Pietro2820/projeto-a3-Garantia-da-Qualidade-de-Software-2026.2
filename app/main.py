@@ -15,6 +15,9 @@ arquivo resolve a INTEGRAÇÃO com o frontend (player adaptativo):
   3. `/player` serve o frontend direto do backend (mesma origem — a forma mais
      simples de rodar tudo: `uvicorn app.main:app` e abrir
      http://localhost:8000/player/).
+  4. `/login` e `/cadastro` autenticam o usuário contra a tabela `usuarios`
+     do Supabase (rodar supabase/schema_usuarios.sql) — é o backend da tela
+     de login da branch frontend-css; o front guarda o nome em sessionStorage.
 """
 import mimetypes
 import os
@@ -25,6 +28,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from app.media import VIDEOS_DIR, garantir_diretorio, status_midia_completo
+from app.auth.router import router as auth_router
 from app.upload.router import router as upload_router
 from app.status.router import router as status_router
 from app.recommendations.router import router as recommendations_router
@@ -60,6 +64,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(auth_router)
 app.include_router(upload_router)
 app.include_router(status_router)
 app.include_router(recommendations_router)
@@ -69,7 +74,8 @@ app.include_router(recommendations_router)
 def health():
     return {
         "status": "ok",
-        "rotas": ["/upload", "/status/{video_id}", "/media/{video_id}",
+        "rotas": ["/login", "/cadastro",
+                  "/upload", "/status/{video_id}", "/media/{video_id}",
                   "/catalogo", "/catalogo/{video_id}",
                   "/videos/{video_id}/relacionados",
                   "/recomendacoes/{user_id}", "/trending", "/watch"],

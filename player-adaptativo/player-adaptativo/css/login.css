@@ -79,7 +79,10 @@
 /* ---------------------------------------------------------------------------
    Campos com ícone à esquerda
    --------------------------------------------------------------------------- */
-#loginForm {
+/* Os dois formulários (login e cadastro) compartilham o mesmo layout de card:
+   coluna única com espaçamento constante — troca de formulário não "pula". */
+#loginForm,
+#cadastroForm {
   display: flex;
   flex-direction: column;
   gap: 16px;

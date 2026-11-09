@@ -1,73 +1,91 @@
 /**
  * Tela de login (js/login.js).
  *
- * Escopo desta etapa (branch frontend-css): o DESIGN da tela — organizada,
- * acessível e visualmente funcional. O envio é simulado (spinner + redirecion-
- * amento para o catálogo) porque a autenticação ainda não existe no backend.
+ * Integração REAL com a API (branch feature/login-banco):
+ *   - POST /login    (app/auth/router.py) — valida e-mail+senha contra a
+ *     tabela `usuarios` do Supabase e devolve os dados públicos do usuário;
+ *   - POST /cadastro — cria a conta (hash PBKDF2 no backend) e, se der tudo
+ *     certo, faz login automático;
+ *   - após autenticar, o nome fica em sessionStorage (chave "edustream.usuario")
+ *     e o usuário vai para o catálogo (home.html).
  *
- * O que já está pronto e é reutilizável quando a API existir:
- *  - validação de e-mail/senha com mensagens por campo (aria-invalid +
- *    aria-describedby), revalidando enquanto o usuário digita;
- *  - estado de carregamento no botão (classe .carregando + spinner);
- *  - aviso de Caps Lock no campo de senha;
- *  - alternância mostrar/esconder senha (aria-pressed + troca de ícone).
- *
- * TODO(integração): trocar o setTimeout de `enviar()` pela chamada real
- * (ex.: POST /login via API_BASE_URL de ./api.js) e tratar 401 exibindo
- * `mostrarErro()` no campo correspondente.
+ * Tudo o que já existia na etapa de design continua igual: validação por
+ * campo com aria-invalid/aria-describedby e revalidação ao digitar, estado
+ * de carregamento no botão (spinner), aviso de Caps Lock e alternância
+ * mostrar/esconder senha.
  */
+import { ApiError, cadastrarUsuario, loginUsuario } from "./api.js";
 
 const form = document.querySelector("#loginForm");
 const campoEmail = document.querySelector("#email");
 const campoSenha = document.querySelector("#senha");
 const botaoEnviar = document.querySelector("#btnEntrar");
+
+const formCadastro = document.querySelector("#cadastroForm");
+const campoNome = document.querySelector("#nomeCadastro");
+const campoEmailCadastro = document.querySelector("#emailCadastro");
+const campoSenhaCadastro = document.querySelector("#senhaCadastro");
+const botaoCadastrar = document.querySelector("#btnCadastrar");
+
 const botaoToggle = document.querySelector("#toggleSenha");
+const botaoToggleCadastro = document.querySelector("#toggleSenhaCadastro");
+
+const cabecalhoTitulo = document.querySelector("#loginTitulo");
+const cabecalhoSubtitulo = cabecalhoTitulo.parentElement.querySelector("p");
+
+const botaoAlternar = document.querySelector("#alternarFormulario");
+const textoAlternar = document.querySelector("#textoAlternar");
 const aviso = document.querySelector("#loginAviso");
 
 const erroEmail = document.querySelector("#emailErro");
 const erroSenha = document.querySelector("#senhaErro");
 const capsAviso = document.querySelector("#capsAviso");
 
+const erroNome = document.querySelector("#nomeCadastroErro");
+const erroEmailCadastro = document.querySelector("#emailCadastroErro");
+const erroSenhaCadastro = document.querySelector("#senhaCadastroErro");
+const capsCadastroAviso = document.querySelector("#capsCadastroAviso");
+
 const EMAIL_REGEXP = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const SENHA_MINIMA = 8;
 
 /* ---------------------------------------------------------------------------
- * Mostrar / esconder senha
+ * Mostrar / esconder senha (os dois formulários)
  * ------------------------------------------------------------------------- */
 
-/** Alterna a visibilidade da senha e sincroniza ícone + estados ARIA. */
-function alternarVisibilidadeSenha() {
-  const visivel = campoSenha.type === "password";
+/** Alterna a visibilidade de um campo de senha e sincroniza ícone + ARIA. */
+function ligarToggleSenha(botao, campo, avisoCaps) {
+  botao.addEventListener("click", () => {
+    const visivel = campo.type === "password";
 
-  campoSenha.type = visivel ? "text" : "password";
-  botaoToggle.classList.toggle("ativo", visivel);
-  botaoToggle.setAttribute("aria-pressed", String(visivel));
-  botaoToggle.setAttribute("aria-label", visivel ? "Esconder senha" : "Mostrar senha");
-  botaoToggle.title = visivel ? "Esconder senha" : "Mostrar senha";
-}
+    campo.type = visivel ? "text" : "password";
+    botao.classList.toggle("ativo", visivel);
+    botao.setAttribute("aria-pressed", String(visivel));
+    botao.setAttribute("aria-label", visivel ? "Esconder senha" : "Mostrar senha");
+    botao.title = visivel ? "Esconder senha" : "Mostrar senha";
+  });
 
-botaoToggle.addEventListener("click", alternarVisibilidadeSenha);
+  // Mantém o foco no campo enquanto o usuário clica no olho — a digitação
+  // não é interrompida (mesmo comportamento da tela de login do GitHub).
+  botao.addEventListener("mousedown", (evento) => evento.preventDefault());
 
-// Mantém o foco no campo enquanto o usuário clica no olho — a digitação não
-// é interrompida (mesmo comportamento da tela de login do GitHub).
-botaoToggle.addEventListener("mousedown", (evento) => evento.preventDefault());
-
-/* ---------------------------------------------------------------------------
- * Aviso de Caps Lock
- * ------------------------------------------------------------------------- */
-
-function atualizarAvisoCapsLock(evento) {
-  if (evento.getModifierState) {
-    capsAviso.hidden = !evento.getModifierState("CapsLock");
+  // O aviso de Caps Lock acompanha o MESMO campo do toggle.
+  function atualizarAvisoCapsLock(evento) {
+    if (evento.getModifierState) {
+      avisoCaps.hidden = !evento.getModifierState("CapsLock");
+    }
   }
+
+  campo.addEventListener("keydown", atualizarAvisoCapsLock);
+  campo.addEventListener("keyup", atualizarAvisoCapsLock);
+  campo.addEventListener("blur", () => { avisoCaps.hidden = true; });
 }
 
-campoSenha.addEventListener("keydown", atualizarAvisoCapsLock);
-campoSenha.addEventListener("keyup", atualizarAvisoCapsLock);
-campoSenha.addEventListener("blur", () => { capsAviso.hidden = true; });
+ligarToggleSenha(botaoToggle, campoSenha, capsAviso);
+ligarToggleSenha(botaoToggleCadastro, campoSenhaCadastro, capsCadastroAviso);
 
 /* ---------------------------------------------------------------------------
- * Validação dos campos
+ * Validação dos campos (login e cadastro compartilham as regras)
  * ------------------------------------------------------------------------- */
 
 /** Exibe a mensagem de erro de um campo (e marca aria-invalid). */
@@ -84,57 +102,159 @@ function limparErro(campo, elementoErro) {
   campo.removeAttribute("aria-invalid");
 }
 
-/** Valida o e-mail; devolve true quando válido. */
-function validarEmail() {
-  const valor = campoEmail.value.trim();
+/** Valida um e-mail; devolve true quando válido. */
+function validarEmail(campo, elementoErro) {
+  const valor = campo.value.trim();
 
   if (valor === "") {
-    mostrarErro(campoEmail, erroEmail, "Informe seu e-mail.");
+    mostrarErro(campo, elementoErro, "Informe seu e-mail.");
     return false;
   }
   if (!EMAIL_REGEXP.test(valor)) {
-    mostrarErro(campoEmail, erroEmail, "Informe um e-mail válido (ex.: voce@exemplo.com).");
+    mostrarErro(campo, elementoErro, "Informe um e-mail válido (ex.: voce@exemplo.com).");
     return false;
   }
-  limparErro(campoEmail, erroEmail);
+  limparErro(campo, elementoErro);
   return true;
 }
 
-/** Valida a senha; devolve true quando válida. */
-function validarSenha() {
-  const valor = campoSenha.value;
+/** Valida uma senha; devolve true quando válida. */
+function validarSenha(campo, elementoErro) {
+  const valor = campo.value;
 
   if (valor === "") {
-    mostrarErro(campoSenha, erroSenha, "Informe sua senha.");
+    mostrarErro(campo, elementoErro, "Informe sua senha.");
     return false;
   }
   if (valor.length < SENHA_MINIMA) {
-    mostrarErro(campoSenha, erroSenha, `A senha deve ter pelo menos ${SENHA_MINIMA} caracteres.`);
+    mostrarErro(campo, elementoErro, `A senha deve ter pelo menos ${SENHA_MINIMA} caracteres.`);
     return false;
   }
-  limparErro(campoSenha, erroSenha);
+  limparErro(campo, elementoErro);
+  return true;
+}
+
+function validarNome() {
+  const valor = campoNome.value.trim();
+
+  if (valor.length < 2) {
+    mostrarErro(campoNome, erroNome, "Informe seu nome.");
+    return false;
+  }
+  limparErro(campoNome, erroNome);
   return true;
 }
 
 // Revalida enquanto digita: o erro some assim que o campo fica válido,
 // sem esperar o próximo envio do formulário.
 campoEmail.addEventListener("input", () => {
-  if (!erroEmail.hidden) validarEmail();
+  if (!erroEmail.hidden) validarEmail(campoEmail, erroEmail);
 });
 
 campoSenha.addEventListener("input", () => {
-  if (!erroSenha.hidden) validarSenha();
+  if (!erroSenha.hidden) validarSenha(campoSenha, erroSenha);
+});
+
+campoNome.addEventListener("input", () => {
+  if (!erroNome.hidden) validarNome();
+});
+
+campoEmailCadastro.addEventListener("input", () => {
+  if (!erroEmailCadastro.hidden) validarEmail(campoEmailCadastro, erroEmailCadastro);
+});
+
+campoSenhaCadastro.addEventListener("input", () => {
+  if (!erroSenhaCadastro.hidden) validarSenha(campoSenhaCadastro, erroSenhaCadastro);
 });
 
 /* ---------------------------------------------------------------------------
- * Envio do formulário (simulado — design primeiro)
+ * Alternância Entrar ↔ Criar conta
  * ------------------------------------------------------------------------- */
 
-function enviar(evento) {
-  evento.preventDefault();
+let mostrandoCadastro = false;
 
-  const emailOk = validarEmail();
-  const senhaOk = validarSenha();
+function alternarFormulario() {
+  mostrandoCadastro = !mostrandoCadastro;
+
+  form.hidden = mostrandoCadastro;
+  formCadastro.hidden = !mostrandoCadastro;
+
+  cabecalhoTitulo.textContent = mostrandoCadastro ? "Criar conta" : "Entrar";
+  cabecalhoSubtitulo.textContent = mostrandoCadastro
+    ? "Crie sua conta para começar a assistir"
+    : "Acesse sua conta para continuar assistindo";
+
+  textoAlternar.textContent = mostrandoCadastro
+    ? "Já tem uma conta?"
+    : "Não tem uma conta?";
+  botaoAlternar.textContent = mostrandoCadastro ? "Entrar" : "Criar conta";
+
+  limparAviso();
+  (mostrandoCadastro ? campoNome : campoEmail).focus();
+}
+
+botaoAlternar.addEventListener("click", alternarFormulario);
+
+/* ---------------------------------------------------------------------------
+ * Avisos no rodapé do card (role="status" — leitores de tela anunciam)
+ * ------------------------------------------------------------------------- */
+
+function mostrarAviso(mensagem) {
+  aviso.textContent = mensagem;
+  aviso.hidden = false;
+}
+
+function limparAviso() {
+  aviso.textContent = "";
+  aviso.hidden = true;
+}
+
+/** Estado de carregamento compartilhado pelos dois botões de submit. */
+function definirCarregando(botao, carregando) {
+  botao.classList.toggle("carregando", carregando);
+  botao.disabled = carregando;
+}
+
+/**
+ * Mapeia o erro da API para a interface: credencial/e-mail viram erro no
+ * campo certo, 503 e falha de rede viram aviso no rodapé do card.
+ *
+ * `alvo` descreve para onde apontar o erro de cada formulário:
+ *   { campoEmail, erroEmail, campoSenha, erroSenha, ehCadastro }
+ */
+function tratarErroApi(erro, alvo) {
+  if (erro instanceof ApiError) {
+    if (erro.status === 401) {
+      // Login: erro no campo de senha (não revela se o e-mail existe).
+      mostrarErro(alvo.campoSenha, alvo.erroSenha, "E-mail ou senha incorretos.");
+      return;
+    }
+    if (erro.status === 409) {
+      mostrarErro(alvo.campoEmail, alvo.erroEmail,
+        "Este e-mail já tem uma conta. Faça login ou use outro e-mail.");
+      return;
+    }
+    if (erro.status === 503) {
+      mostrarAviso("Banco de dados indisponível. Verifique se a API está rodando e se o SQL de usuários (schema_usuarios.sql) já foi executado no Supabase.");
+      return;
+    }
+    mostrarAviso(`Não foi possível continuar (HTTP ${erro.status}). Tente novamente.`);
+    return;
+  }
+  // Falha de rede (API desligada) não é ApiError — fetch lança TypeError.
+  mostrarAviso("Não foi possível conectar à API. Verifique se o backend está rodando em localhost:8000.");
+}
+
+/* ---------------------------------------------------------------------------
+ * Envio do LOGIN (POST /login real)
+ * ------------------------------------------------------------------------- */
+
+async function enviar(evento) {
+  evento.preventDefault();
+  limparAviso();
+
+  const emailOk = validarEmail(campoEmail, erroEmail);
+  const senhaOk = validarSenha(campoSenha, erroSenha);
 
   // Foco vai direto pro primeiro campo inválido (teclado e leitores de tela).
   if (!emailOk) {
@@ -146,32 +266,94 @@ function enviar(evento) {
     return;
   }
 
-  botaoEnviar.classList.add("carregando");
-  botaoEnviar.disabled = true;
+  definirCarregando(botaoEnviar, true);
 
-  // TODO(integração): substituir pelo POST /login real (API_BASE_URL em
-  // ./api.js) quando o backend de autenticação existir.
-  window.setTimeout(() => {
+  try {
+    const resposta = await loginUsuario({
+      email: campoEmail.value.trim(),
+      senha: campoSenha.value,
+    });
+
+    // O backend devolve { usuario: { usuario_id, nome, email } }.
+    sessionStorage.setItem(
+      "edustream.usuario",
+      JSON.stringify(resposta.usuario)
+    );
     window.location.href = "./home.html";
-  }, 900);
+  } catch (erro) {
+    tratarErroApi(erro, {
+      campoEmail, erroEmail, campoSenha, erroSenha, ehCadastro: false,
+    });
+    definirCarregando(botaoEnviar, false);
+  }
 }
 
 form.addEventListener("submit", enviar);
 
 /* ---------------------------------------------------------------------------
- * Funcionalidades ainda não integradas (avisos não-bloqueantes)
+ * Envio do CADASTRO (POST /cadastro real + login automático)
  * ------------------------------------------------------------------------- */
 
-/** Mostra um aviso curto no rodapé do card (role="status"). */
-function mostrarAviso(mensagem) {
-  aviso.textContent = mensagem;
-  aviso.hidden = false;
+async function enviarCadastro(evento) {
+  evento.preventDefault();
+  limparAviso();
+
+  const nomeOk = validarNome();
+  const emailOk = validarEmail(campoEmailCadastro, erroEmailCadastro);
+  const senhaOk = validarSenha(campoSenhaCadastro, erroSenhaCadastro);
+
+  if (!nomeOk) {
+    campoNome.focus();
+    return;
+  }
+  if (!emailOk) {
+    campoEmailCadastro.focus();
+    return;
+  }
+  if (!senhaOk) {
+    campoSenhaCadastro.focus();
+    return;
+  }
+
+  definirCarregando(botaoCadastrar, true);
+
+  try {
+    await cadastrarUsuario({
+      nome: campoNome.value.trim(),
+      email: campoEmailCadastro.value.trim(),
+      senha: campoSenhaCadastro.value,
+    });
+
+    // Conta criada: login automático com as MESMAS credenciais — o usuário
+    // não precisa digitar de novo (fluxo padrão de apps de streaming).
+    const resposta = await loginUsuario({
+      email: campoEmailCadastro.value.trim(),
+      senha: campoSenhaCadastro.value,
+    });
+
+    sessionStorage.setItem(
+      "edustream.usuario",
+      JSON.stringify(resposta.usuario)
+    );
+    window.location.href = "./home.html";
+  } catch (erro) {
+    tratarErroApi(erro, {
+      campoEmail: campoEmailCadastro,
+      erroEmail: erroEmailCadastro,
+      campoSenha: campoSenhaCadastro,
+      erroSenha: erroSenhaCadastro,
+      ehCadastro: true,
+    });
+    definirCarregando(botaoCadastrar, false);
+  }
 }
 
-document.querySelector("#esqueciSenha").addEventListener("click", () => {
-  mostrarAviso("A recuperação de senha será conectada à API na etapa de autenticação.");
-});
+formCadastro.addEventListener("submit", enviarCadastro);
 
-document.querySelector("#criarConta").addEventListener("click", () => {
-  mostrarAviso("A criação de contas será conectada à API na etapa de autenticação.");
+/* ---------------------------------------------------------------------------
+ * Recuperação de senha (ainda sem endpoint — aviso não-bloqueante)
+ * ------------------------------------------------------------------------- */
+
+document.querySelector("#esqueciSenha").addEventListener("click", () => {
+  mostrarAviso("A recuperação de senha será implementada em uma próxima etapa. Por enquanto, use o usuário de teste do SQL ou crie uma nova conta.");
 });
