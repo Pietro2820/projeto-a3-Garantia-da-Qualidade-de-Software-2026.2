@@ -18,6 +18,9 @@
     </form>
 
     <button class="icon-button" id="profileButton" type="button" aria-label="Perfil">👤</button>
+
+    <!-- Sessão obrigatória (js/sessao.js): a watch page também exige login. -->
+    <button class="sair-button" id="sairButton" type="button" title="Sair da conta">Sair</button>
   </header>
 
   <main class="page">
@@ -143,6 +146,8 @@
        hls_url de cada vídeo vêm do banco, via API. Para um override local sem
        commitar, crie um config.local.js e acrescente a tag <script> dele. -->
   <script src="./config.js"></script>
+  <!-- Guard de sessão ANTES do js da página (sem login → login.html?proximo). -->
+  <script type="module" src="./js/sessao.js"></script>
   <!--
     HLS.js vendalizado (versão fixada em 1.6.13, Apache-2.0).
     Antes a lib vinha de um CDN público: sem internet — ou com a rede da

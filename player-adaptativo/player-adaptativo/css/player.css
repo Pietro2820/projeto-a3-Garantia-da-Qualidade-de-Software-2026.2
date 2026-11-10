@@ -95,6 +95,26 @@ button {
   border-radius: 50%;
 }
 
+/* Sair da conta (topbar de home e watch): discreto, mas com foco visível —
+   acompanha o padrão de acessibilidade do restante do player. */
+.sair-button {
+  height: 40px;
+  padding: 0 16px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.sair-button:hover,
+.sair-button:focus-visible {
+  color: var(--text);
+  border-color: var(--accent);
+}
+
 .page {
   width: min(1500px, 100%);
   margin: 0 auto;
@@ -461,6 +481,10 @@ button {
   .topbar {
     padding: 0 14px;
     gap: 10px;
+  }
+
+  .sair-button {
+    padding: 0 10px;
   }
 
   .brand {

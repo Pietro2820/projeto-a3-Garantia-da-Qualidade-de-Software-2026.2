@@ -6,8 +6,14 @@
  *     tabela `usuarios` do Supabase e devolve os dados públicos do usuário;
  *   - POST /cadastro — cria a conta (hash PBKDF2 no backend) e, se der tudo
  *     certo, faz login automático;
- *   - após autenticar, o nome fica em sessionStorage (chave "edustream.usuario")
- *     e o usuário vai para o catálogo (home.html).
+ *   - após autenticar, a sessão fica em sessionStorage (chave
+ *     "edustream.usuario", via js/sessao.js) e o usuário vai para o destino
+ *     pedido no ?proximo — home.html, ou a watch page que disparou o login
+ *     (ex.: index.html?video=v1). Sem ?proximo, cai na home.
+ *
+ * O guard de entrada é o js/sessao.js (home e watch exigem login); este
+ * arquivo é o outro lado do fluxo: autenticar e devolver o usuário ao lugar
+ * de onde ele veio.
  *
  * Tudo o que já existia na etapa de design continua igual: validação por
  * campo com aria-invalid/aria-describedby e revalidação ao digitar, estado
@@ -15,6 +21,7 @@
  * mostrar/esconder senha.
  */
 import { ApiError, cadastrarUsuario, loginUsuario } from "./api.js";
+import { entrar, irParaDestino } from "./sessao.js";
 
 const form = document.querySelector("#loginForm");
 const campoEmail = document.querySelector("#email");
@@ -275,11 +282,10 @@ async function enviar(evento) {
     });
 
     // O backend devolve { usuario: { usuario_id, nome, email } }.
-    sessionStorage.setItem(
-      "edustream.usuario",
-      JSON.stringify(resposta.usuario)
-    );
-    window.location.href = "./home.html";
+    entrar(resposta.usuario);
+    // Vai para o ?proximo validado (allowlist em js/sessao.js) — ou para a
+    // home quando o login foi direto pela tela.
+    irParaDestino();
   } catch (erro) {
     tratarErroApi(erro, {
       campoEmail, erroEmail, campoSenha, erroSenha, ehCadastro: false,
@@ -331,11 +337,8 @@ async function enviarCadastro(evento) {
       senha: campoSenhaCadastro.value,
     });
 
-    sessionStorage.setItem(
-      "edustream.usuario",
-      JSON.stringify(resposta.usuario)
-    );
-    window.location.href = "./home.html";
+    entrar(resposta.usuario);
+    irParaDestino();
   } catch (erro) {
     tratarErroApi(erro, {
       campoEmail: campoEmailCadastro,
