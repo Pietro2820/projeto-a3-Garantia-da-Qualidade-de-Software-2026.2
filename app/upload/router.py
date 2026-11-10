@@ -108,6 +108,12 @@ async def upload_video(
             detail="Arquivo excede o tamanho máximo de 500MB.",
         )
 
+    if size == 0:
+        raise HTTPException(
+            status_code=400,
+            detail="Arquivo vazio. Envie um vídeo válido.",
+        )
+
     if not titulo.strip():
         raise HTTPException(
             status_code=400,
@@ -127,8 +133,26 @@ async def upload_video(
 
     file_path = video_folder / f"original{extension}"
 
-    with open(file_path, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
+    # Copia em blocos de 1MB aplicando o limite de tamanho DURANTE a escrita:
+    # o tamanho medido antes pode mentir (stream não seekable ou cliente que
+    # envia mais do que anunciou), então a checagem vale também no meio da
+    # cópia — e qualquer falha no caminho remove a pasta em vez de deixar
+    # arquivo parcial no disco.
+    try:
+        with open(file_path, "wb") as buffer:
+            while True:
+                bloco = file.file.read(1024 * 1024)
+                if not bloco:
+                    break
+                if buffer.tell() + len(bloco) > MAX_SIZE:
+                    raise HTTPException(
+                        status_code=400,
+                        detail="Arquivo excede o tamanho máximo de 500MB.",
+                    )
+                buffer.write(bloco)
+    except Exception:
+        shutil.rmtree(video_folder, ignore_errors=True)
+        raise
 
     metadata = {
         "video_id": video_id,
@@ -148,6 +172,9 @@ async def upload_video(
         save_metadata(metadata)
     except Exception as exc:
         logger.error("Falha ao gravar metadados no banco: %s", exc)
+        # Sem metadados o arquivo vira lixo órfão no disco: remove a pasta
+        # antes de devolver o erro.
+        shutil.rmtree(video_folder, ignore_errors=True)
         raise HTTPException(
             status_code=503,
             detail=(
