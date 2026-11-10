@@ -6,8 +6,12 @@
  * autenticar (POST /login real, fetch dublado), o login.js grava a sessão
  * (entrar) e chama irParaDestino — que devolve o usuário EXATAMENTE para o
  * destino pedido (a allowlist do ?proximo tem suíte própria em
- * sessao.test.js). O cadastro (POST /cadastro + login automático) segue o
- * mesmo caminho.
+ * sessao.test.js).
+ *
+ * CRIAR CONTA agora é uma página separada (cadastro.html): o comportamento
+ * dela tem suíte própria (tests/cadastro.test.js). Aqui ficam, além do
+ * contrato de login, a afirmação de que o link "Criar conta" leva à página
+ * nova PRESERVANDO o ?proximo.
  *
  * js/sessao.js é dublado por módulo (jest.unstable_mockModule, padrão ESM do
  * Jest): assim o teste afirma o CONTRATO entre login.js e sessao.js — e não
@@ -28,7 +32,7 @@ const USUARIO = {
   email: "aluna@edustream.com",
 };
 
-/** Dubla a API por rota: /login devolve o usuário; /cadastro, 201 vazio. */
+/** Dubla a API: /login devolve o usuário autenticado. */
 function mockarApi() {
   global.fetch = jest.fn(async (url) => {
     const alvo = String(url);
@@ -38,9 +42,6 @@ function mockarApi() {
         status: 200,
         json: async () => ({ usuario: USUARIO }),
       };
-    }
-    if (alvo.includes("/cadastro")) {
-      return { ok: true, status: 201, json: async () => ({}) };
     }
     return { ok: false, status: 404, json: async () => ({}) };
   });
@@ -136,25 +137,32 @@ describe("login — contrato com a sessão depois de autenticar", () => {
   });
 });
 
-describe("cadastro — conta criada, login automático e destino", () => {
-  test("cadastro com ?proximo cria conta, loga e leva ao destino", async () => {
-    mockarApi();
-    montarPagina("/login.html?proximo=index.html%3Fvideo%3Dv2");
-    const { entrar, irParaDestino } = await importarLogin();
+describe("navegação Entrar → Criar conta", () => {
+  test("o link 'Criar conta' aponta para cadastro.html e leva o ?proximo junto", async () => {
+    montarPagina("/login.html?proximo=index.html%3Fvideo%3Dv1");
+    await importarLogin();
 
-    document.querySelector("#nomeCadastro").value = "Aluna de Teste";
-    document.querySelector("#emailCadastro").value = "aluna@edustream.com";
-    document.querySelector("#senhaCadastro").value = "senha12345";
-    document.querySelector("#cadastroForm")
-      .dispatchEvent(new Event("submit", { cancelable: true }));
-    await flush();
+    const link = document.querySelector("#linkCadastro");
+    expect(link).not.toBeNull();
+    expect(link.getAttribute("href")).toContain("cadastro.html");
+    expect(link.getAttribute("href")).toContain("proximo=index.html%3Fvideo%3Dv1");
+  });
 
-    // Duas chamadas: POST /cadastro (cria) + POST /login (automático).
-    const rotas = global.fetch.mock.calls.map(([url]) => String(url));
-    expect(rotas.some((rota) => rota.includes("/cadastro"))).toBe(true);
-    expect(rotas.some((rota) => rota.includes("/login"))).toBe(true);
+  test("sem ?proximo, o link fica limpo (só cadastro.html)", async () => {
+    montarPagina("/login.html");
+    await importarLogin();
 
-    expect(entrar).toHaveBeenCalledWith(USUARIO);
-    expect(irParaDestino).toHaveBeenCalledTimes(1);
+    const link = document.querySelector("#linkCadastro");
+    expect(link.getAttribute("href")).toBe("./cadastro.html");
+  });
+
+  test("a página de login não tem mais formulário de cadastro embutido", async () => {
+    montarPagina("/login.html");
+    await importarLogin();
+
+    // A separação é a própria feature: nenhum resquício do formulário antigo.
+    expect(document.querySelector("#cadastroForm")).toBeNull();
+    expect(document.querySelector("#nomeCadastro")).toBeNull();
+    expect(document.querySelector("#alternarFormulario")).toBeNull();
   });
 });

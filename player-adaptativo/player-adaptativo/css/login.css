@@ -1,9 +1,10 @@
 /* ---------------------------------------------------------------------------
-   Tela de login (login.html) — estilos específicos da autenticação.
+   Telas de autenticação (login.html e cadastro.html).
 
    Reaproveita os tokens e a base do player.css (variáveis :root, .brand,
-   .btn-primary, reset de fonte). Aqui ficam só o layout da tela, os campos
-   com ícone, o botão de mostrar/esconder senha e os estados de validação.
+   .btn-primary, reset de fonte). Aqui ficam o layout do card, os campos com
+   ícone, o botão de mostrar/esconder senha e os estados de validação —
+   compartilhados pelas DUAS páginas (mesmo vocabulário visual).
    --------------------------------------------------------------------------- */
 
 .login-body {
@@ -76,11 +77,11 @@
   font-size: 14px;
 }
 
-/* ---------------------------------------------------------------------------
-   Campos com ícone à esquerda
-   --------------------------------------------------------------------------- */
-/* Os dois formulários (login e cadastro) compartilham o mesmo layout de card:
-   coluna única com espaçamento constante — troca de formulário não "pula". */
+#loginForm[hidden],
+#cadastroForm[hidden] {
+  display: none;
+}
+
 #loginForm,
 #cadastroForm {
   display: flex;
@@ -251,8 +252,9 @@
   color: var(--text);
 }
 
-/* Botões com aparência de link — são <button> para não navegar a lugar algum
-   enquanto a funcionalidade não existe no backend. */
+/* Elementos com aparência de link:
+   - <button class="link"> — funcionalidades sem backend ainda (esqueci a senha);
+   - <a class="link"> — navegação real entre Entrar ↔ Criar conta. */
 .link {
   padding: 0;
   border: 0;
@@ -260,6 +262,11 @@
   color: var(--accent);
   font-size: inherit;
   cursor: pointer;
+}
+
+/* O <a> herdou o sublinhado padrão do navegador — aqui o feedback é no hover. */
+a.link {
+  text-decoration: none;
 }
 
 .link:hover {
